@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Worship Scheduler</title>
+<style>
+:root { --bg: #f6f4ef; --card: #fff; --ink: #22201c; --accent: #7b5e3b; --line: #e3ded4; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1b1917; --card: #252220; --ink: #f0ece5; --accent: #c9a877; --line: #3a3532; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px system-ui, sans-serif; }
+header { background: var(--card); padding: 12px; border-bottom: 1px solid var(--line); }
+h1 { margin: 0; font-size: 18px; }
+h2 { margin: 10px 0; font-size: 16px; }
+main { max-width: 800px; margin: 0 auto; padding: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); padding: 14px; margin: 12px 0; border-radius: 8px; }
+input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
+button { background: var(--accent); color: #fff; border: 0; padding: 10px; border-radius: 6px; cursor: pointer; margin: 4px 0; width: 100%; }
+button.sec { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 13px; color: #999; }
+.chip { display: inline-block; padding: 6px 12px; border: 1px solid var(--line); border-radius: 20px; margin: 4px; cursor: pointer; background: var(--bg); font-size: 13px; }
+.chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+nav { padding: 8px; display: flex; gap: 4px; overflow-x: auto; background: var(--card); border-bottom: 1px solid var(--line); }
+nav button { margin: 0; padding: 8px 12px; width: auto; font-size: 13px; }
+.song { background: var(--bg); padding: 10px; margin: 8px 0; border-radius: 6px; }
+.song b { display: block; margin-bottom: 4px; }
+.song small { color: #999; display: block; margin: 4px 0; }
+.msg { background: var(--bg); padding: 8px; margin: 6px 0; border-radius: 4px; font-size: 12px; }
+details { margin: 8px 0; }
+summary { cursor: pointer; color: var(--accent); }
+.status { font-size: 11px; color: #999; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎵 Worship Scheduler</h1>
+  <div id="user-info" style="font-size: 12px; color: #999; margin-top: 4px;"></div>
+  <div class="status" id="sync-text">Loading...</div>
+</header>
+
+<nav id="nav"></nav>
+
+<main id="main"></main>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.2/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.2/firebase-database.js"></script>
+
+<script>
+// ===== FIREBASE CONFIG - UPDATE THIS WITH YOUR CONFIG =====
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+var db, refDB;
+var INST = ["Drums", "Vocals", "Bass Guitar", "Acoustic Guitar", "Piano"];
+var KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+var user = null;
+var tab = "dash";
+
+function initFirebase() {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+    refDB = db.ref("worship");
+    
+    db.ref(".info/connected").on("value", function(snap) {
+      if (snap.val() === true) {
+        document.getElementById("sync-text").textContent = "✓ Live sync connected";
+      } else {
+        document.getElementById("sync-text").textContent = "✗ Offline - check Firebase config";
+      }
+    });
+    
+    show();
+  } catch (e) {
+    console.error("Firebase init error:", e);
+    document.getElementById("sync-text").textContent = "✗ Firebase config error";
+  }
+}
+
+function getMe() {
+  var uid = sessionStorage.getItem("uid");
+  return uid ? { uid: uid } : null;
+}
+
+function nav(tabs) {
+  var h = "";
+  for (var i = 0; i < tabs.length; i++) {
+    var t = tabs[i][0];
+    var l = tabs[i][1];
+    var cls = t === tab ? "active" : "";
+    h += '<button class="' + cls + '" onclick="tab=\'' + t + '\';show()">' + l + '</button>';
+  }
+  document.getElementById("nav").innerHTML = h;
+}
+
+function render(h) {
+  document.getElementById("main").innerHTML = h;
+  if (sessionStorage.getItem("name")) {
+    document.getElementById("user-info").textContent = sessionStorage.getItem("name") + " | " + sessionStorage.getItem("role");
+  }
+}
+
+function show() {
+  user = getMe();
+  
+  if (!user) {
+    login();
+  } else if (!sessionStorage.getItem("inst")) {
+    inst();
+  } else {
+    if (tab === "dash") dash();
+    else if (tab === "plan") plan();
+    else if (tab === "songs") songs();
+    else if (tab === "my") my();
+    else if (tab === "avail") avail();
+    else if (tab === "chat") chat();
+    else if (tab === "team") team();
+    else dash();
+  }
+}
+
+function login() {
+  var h = '<div class="card"><h2>Sign In / Create</h2>' +
+    '<input type="text" id="nm" placeholder="Name">' +
+    '<input type="password" id="pw" placeholder="Password (4+ chars)">' +
+    '<label>Role</label>' +
+    '<select id="rl"><option value="member">Member</option><option value="admin">Admin</option></select>' +
+    '<button onclick="signup()">Create</button>' +
+    '<button class="sec" onclick="signin()">Sign In</button>' +
+    '</div>';
+  nav([]);
+  render(h);
+}
+
+function signup() {
+  var nm = document.getElementById("nm").value.trim();
+  var pw = document.getElementById("pw").value;
+  var rl = document.getElementById("rl").value;
+  if (!nm || pw.length < 4) return alert("Invalid");
+  
+  var uid = "u_" + Math.random().toString().substr(2, 9);
+  refDB.child("users/" + uid).set({
+    name: nm,
+    pass: pw,
+    role: rl,
+    inst: [],
+    off: {}
+  }).then(function() {
+    sessionStorage.setItem("uid", uid);
+    sessionStorage.setItem("name", nm);
+    sessionStorage.setItem("role", rl);
+    show();
+  }).catch(function(e) {
+    alert("Error: " + e.message);
+  });
+}
+
+function signin() {
+  var nm = document.getElementById("nm").value.trim();
+  var pw = document.getElementById("pw").value;
+  
+  refDB.child("users").once("value").then(function(snap) {
+    var found = false;
+    snap.forEach(function(child) {
+      var u = child.val();
+      if (u.name === nm && u.pass === pw) {
+        sessionStorage.setItem("uid", child.key);
+        sessionStorage.setItem("name", u.name);
+        sessionStorage.setItem("role", u.role);
+        found = true;
+        show();
+      }
+    });
+    if (!found) alert("Not found");
+  });
+}
+
+function logout() {
+  sessionStorage.clear();
+  show();
+}
+
+function inst() {
+  var h = '<div class="card"><h2>Pick Instruments</h2>';
+  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|") : [];
+  
+  for (var i = 0; i < INST.length; i++) {
+    var n = INST[i];
+    var sel = selected.indexOf(n) >= 0 ? " on" : "";
+    h += '<span class="chip' + sel + '" onclick="tglInst(\'' + n + '\')">' + n + '</span>';
+  }
+  h += '<button style="margin-top: 20px" onclick="doneInst()">Done</button></div>';
+  nav([]);
+  render(h);
+}
+
+function tglInst(n) {
+  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|") : [];
+  var idx = selected.indexOf(n);
+  if (idx >= 0) {
+    selected.splice(idx, 1);
+  } else {
+    selected.push(n);
+  }
+  sessionStorage.setItem("inst", selected.join("|"));
+  inst();
+}
+
+function doneInst() {
+  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|") : [];
+  if (!selected.length) return alert("Pick one");
+  
+  var uid = sessionStorage.getItem("uid");
+  refDB.child("users/" + uid).update({ inst: selected });
+  tab = "dash";
+  show();
+}
+
+function dash() {
+  var role = sessionStorage.getItem("role");
+  var tabs = role === "admin" 
+    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  
+  if (tab === "logout") {
+    logout();
+    return;
+  }
+  
+  var h = '<div class="card"><h2>Hello, ' + sessionStorage.getItem("name") + '</h2>' +
+    '<p style="color: #999">' + (sessionStorage.getItem("inst") || "") + '</p>' +
+    '</div>';
+  
+  nav(tabs);
+  render(h);
+}
+
+function plan() {
+  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
+  
+  var h = '<div class="card"><h2>Plan Service</h2>' +
+    '<label>Type</label>' +
+    '<select id="st"><option>Sunday</option><option>Practice</option><option>Friday Prayer</option><option>Special</option></select>' +
+    '<label>Date</label>' +
+    '<input type="date" id="sd">' +
+    '<label>Time</label>' +
+    '<input type="time" id="sm" value="10:00">' +
+    '<button onclick="addSvc()">Add</button>' +
+    '</div>';
+  
+  refDB.child("services").once("value").then(function(snap) {
+    snap.forEach(function(child) {
+      var s = child.val();
+      h += '<div class="card"><b>' + s.name + '</b><br><small>' + s.date + ' ' + s.time + '</small>' +
+        '<button class="sec" style="width: 100%; margin-top: 8px" onclick="editSvc(\'' + child.key + '\')">Assign</button></div>';
+    });
+    render(h);
+  });
+  
+  nav(tabs);
+}
+
+function addSvc() {
+  var t = document.getElementById("st").value;
+  var d = document.getElementById("sd").value;
+  var tm = document.getElementById("sm").value;
+  if (!d) return alert("Pick date");
+  
+  var id = "s_" + Math.random().toString().substr(2, 9);
+  refDB.child("services/" + id).set({
+    name: t,
+    date: d,
+    time: tm,
+    slots: {}
+  }).then(function() {
+    plan();
+  });
+}
+
+function editSvc(id) {
+  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
+  
+  refDB.child("services/" + id).once("value").then(function(snap) {
+    var s = snap.val();
+    if (!s) return plan();
+    
+    var h = '<div class="card"><h2>' + s.name + '</h2>';
+    
+    for (var i = 0; i < INST.length; i++) {
+      var ins = INST[i];
+      var assigned = s.slots && s.slots[ins] ? s.slots[ins] : {};
+      
+      h += '<label>' + ins + '</label>';
+      
+      for (var uid in assigned) {
+        refDB.child("users/" + uid).once("value").then(function(usnap) {
+          var u = usnap.val();
+          // Live update happens through render
+        });
+        h += '<div style="background: #f0f0f0; padding: 6px; margin: 4px 0; display: flex; justify-content: space-between; border-radius: 4px; font-size: 13px">' +
+          '<span>' + uid + '</span>' +
+          '<button class="sec" style="width: 60px; padding: 4px; margin: 0; font-size: 11px" onclick="delAssign(\'' + id + '\', \'' + ins + '\', \'' + uid + '\')">X</button>' +
+          '</div>';
+      }
+      
+      h += '<select onchange="if(this.value) addAssign(\'' + id + '\', \'' + ins + '\', this.value); this.value=\'\'"><option>+ ' + ins + '</option>';
+      
+      refDB.child("users").once("value").then(function(usnap) {
+        usnap.forEach(function(child) {
+          var u = child.val();
+          var inst = u.inst || [];
+          if (inst.indexOf(ins) >= 0 && (!assigned || !assigned[child.key])) {
+            h += '<option value="' + child.key + '">' + u.name + '</option>';
+          }
+        });
+      });
+      
+      h += '</select>';
+    }
+    
+    h += '<button class="sec" style="margin-top: 20px" onclick="plan()">Back</button></div>';
+    
+    nav(tabs);
+    render(h);
+  });
+}
+
+function addAssign(sid, inst, uid) {
+  refDB.child("services/" + sid + "/slots/" + inst + "/" + uid).set(true);
+}
+
+function delAssign(sid, inst, uid) {
+  refDB.child("services/" + sid + "/slots/" + inst + "/" + uid).remove();
+}
+
+function songs() {
+  var tabs = sessionStorage.getItem("role") === "admin"
+    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  
+  var h = '<h2>Song Library</h2>';
+  
+  if (sessionStorage.getItem("role") === "admin") {
+    h += '<div class="card"><h3>Add Song</h3>' +
+      '<input type="text" id="sn" placeholder="Song title">' +
+      '<label>Key</label>' +
+      '<select id="sk">' + KEYS.map(function(k) { return '<option>' + k + '</option>'; }).join("") + '</select>' +
+      '<label>Notes/Tempo</label>' +
+      '<input type="text" id="sn2" placeholder="e.g. 120 BPM">' +
+      '<label>Lyrics</label>' +
+      '<textarea id="sl" rows="4" placeholder="Lyrics..."></textarea>' +
+      '<label>File (under 5MB)</label>' +
+      '<input type="file" id="sf">' +
+      '<button onclick="addSong()">Add</button></div>';
+  }
+  
+  refDB.child("songs").once("value").then(function(snap) {
+    if (!snap.val()) {
+      h += '<div style="text-align: center; color: #999; padding: 30px">No songs yet</div>';
+    } else {
+      snap.forEach(function(child) {
+        var sg = child.val();
+        h += '<div class="song"><b>' + sg.title + '</b>' +
+          '<small>Key: ' + sg.key + '</small>' +
+          '<small>' + sg.notes + '</small>';
+        if (sg.lyrics) {
+          h += '<details><summary>Lyrics</summary><pre style="font-size: 11px; white-space: pre-wrap; overflow-x: auto; max-height: 150px">' + sg.lyrics + '</pre></details>';
+        }
+        if (sessionStorage.getItem("role") === "admin") {
+          h += '<button class="sec" style="margin-top: 8px; font-size: 12px" onclick="delSong(\'' + child.key + '\')">Delete</button>';
+        }
+        h += '</div>';
+      });
+    }
+    render(h);
+  });
+  
+  nav(tabs);
+}
+
+function addSong() {
+  var nm = document.getElementById("sn").value.trim();
+  var ky = document.getElementById("sk").value;
+  var nt = document.getElementById("sn2").value.trim();
+  var ly = document.getElementById("sl").value.trim();
+  var fl = document.getElementById("sf").files[0];
+  
+  if (!nm) return alert("Title?");
+  
+  var sg = { title: nm, key: ky, notes: nt, lyrics: ly };
+  var id = "sg_" + Math.random().toString().substr(2, 9);
+  
+  if (fl) {
+    if (fl.size > 5000000) return alert("File too big (5MB max)");
+    var r = new FileReader();
+    r.onerror = function() { alert("File read error"); };
+    r.onload = function() {
+      sg.fileSize = fl.size;
+      refDB.child("songs/" + id).set(sg).then(function() {
+        // Store file separately due to size limits
+        refDB.child("songFiles/" + id).set(r.result).then(function() {
+          songs();
+        });
+      });
+    };
+    r.readAsDataURL(fl);
+  } else {
+    refDB.child("songs/" + id).set(sg).then(function() {
+      songs();
+    });
+  }
+}
+
+function delSong(id) {
+  refDB.child("songs/" + id).remove();
+  refDB.child("songFiles/" + id).remove();
+  songs();
+}
+
+function my() {
+  var tabs = [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  var uid = sessionStorage.getItem("uid");
+  
+  var h = '<h2>Your Services</h2>';
+  
+  refDB.child("services").once("value").then(function(snap) {
+    var found = false;
+    snap.forEach(function(child) {
+      var s = child.val();
+      var ids = [];
+      if (s.slots) {
+        for (var inst in s.slots) {
+          for (var u in s.slots[inst]) {
+            if (u === uid) {
+              ids.push(true);
+              found = true;
+            }
+          }
+        }
+      }
+      if (ids.length) {
+        h += '<div class="card"><b>' + s.name + '</b><br><small>' + s.date + ' ' + s.time + '</small></div>';
+      }
+    });
+    
+    if (!found) {
+      h = '<h2>Your Services</h2><div style="text-align: center; color: #999; padding: 30px">None assigned yet</div>';
+    }
+    
+    render(h);
+  });
+  
+  nav(tabs);
+}
+
+function avail() {
+  var tabs = [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  var uid = sessionStorage.getItem("uid");
+  
+  var h = '<div class="card"><h2>Mark Unavailable</h2>';
+  var d = new Date();
+  
+  refDB.child("users/" + uid + "/off").once("value").then(function(snap) {
+    var off = snap.val() || {};
+    
+    for (var i = 0; i < 30; i++) {
+      var x = new Date(d);
+      x.setDate(x.getDate() + i);
+      var ds = x.toISOString().split("T")[0];
+      var isOff = off[ds] ? true : false;
+      h += '<span class="chip' + (isOff ? ' on' : '') + '" onclick="toggleOff(\'' + ds + '\')">' + x.getDate() + '</span>';
+    }
+    
+    h += '</div>';
+    render(h);
+  });
+  
+  nav(tabs);
+}
+
+function toggleOff(d) {
+  var uid = sessionStorage.getItem("uid");
+  refDB.child("users/" + uid + "/off/" + d).once("value").then(function(snap) {
+    if (snap.val()) {
+      refDB.child("users/" + uid + "/off/" + d).remove();
+    } else {
+      refDB.child("users/" + uid + "/off/" + d).set(true);
+    }
+    avail();
+  });
+}
+
+function chat() {
+  var tabs = sessionStorage.getItem("role") === "admin"
+    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  
+  var h = '<div class="card"><h2>Team Chat</h2><div style="border: 1px solid var(--line); padding: 10px; height: 200px; overflow-y: auto; margin: 10px 0; background: var(--bg); border-radius: 6px">';
+  
+  refDB.child("messages").orderByChild("time").limitToLast(50).on("value", function(snap) {
+    var msgs = [];
+    snap.forEach(function(child) {
+      msgs.push(child.val());
+    });
+    
+    h = '<div class="card"><h2>Team Chat</h2><div style="border: 1px solid var(--line); padding: 10px; height: 200px; overflow-y: auto; margin: 10px 0; background: var(--bg); border-radius: 6px">';
+    
+    for (var i = 0; i < msgs.length; i++) {
+      var m = msgs[i];
+      var t = new Date(m.time).toLocaleTimeString();
+      h += '<div class="msg"><b>' + m.name + '</b> <span style="color: #999; font-size: 10px">' + t + '</span><br>' + m.text + '</div>';
+    }
+    
+    h += '</div><input type="text" id="mc" placeholder="Message..." style="margin-bottom: 0"><button onclick="sendMsg()" style="margin-top: 4px">Send</button></div>';
+    render(h);
+  });
+  
+  nav(tabs);
+}
+
+function sendMsg() {
+  var tx = document.getElementById("mc").value.trim();
+  if (!tx) return;
+  
+  refDB.child("messages").push({
+    name: sessionStorage.getItem("name"),
+    text: tx,
+    time: new Date().getTime()
+  });
+  
+  document.getElementById("mc").value = "";
+}
+
+function team() {
+  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
+  
+  var h = '<h2>Team Members</h2>';
+  
+  refDB.child("users").once("value").then(function(snap) {
+    h += '<p style="color: #999; margin: 12px 0">' + snap.numChildren() + ' members</p>';
+    snap.forEach(function(child) {
+      var u = child.val();
+      h += '<div class="card"><b>' + u.name + '</b> ' + (u.role === 'admin' ? '<small style="color: #999">(Admin)</small>' : '') +
+        '<br><small style="color: #999">' + (u.inst && u.inst.length ? u.inst.join(", ") : "—") + '</small></div>';
+    });
+    render(h);
+  });
+  
+  nav(tabs);
+}
+
+initFirebase();
+</script>
+
+</body>
+</html>
