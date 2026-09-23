@@ -36,18 +36,24 @@ summary { cursor: pointer; color: var(--accent); }
 <header>
   <h1>🎵 Worship Scheduler</h1>
   <div id="user-info" style="font-size: 12px; color: #999; margin-top: 4px;"></div>
-  <div class="status" id="sync-text">Loading...</div>
+  <div class="status" id="sync-text">Initializing...</div>
 </header>
 
 <nav id="nav"></nav>
 
 <main id="main"></main>
 
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js"></script>
+<script async defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script async defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-// FIREBASE CONFIG
+var db, refDB;
+var firebaseReady = false;
+var INST = ["Drums", "Vocals", "Bass Guitar", "Acoustic Guitar", "Piano"];
+var KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+var user = null;
+var tab = "dash";
+
 const firebaseConfig = {
   apiKey: "AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
   authDomain: "elc-worship-schedule.firebaseapp.com",
@@ -55,47 +61,46 @@ const firebaseConfig = {
   projectId: "elc-worship-schedule",
   storageBucket: "elc-worship-schedule.firebasestorage.app",
   messagingSenderId: "868888139963",
-  appId: "1:868888139963:web:2d933464a111b2b17c319e",
-  measurementId: "G-MFSYZ379HD"
+  appId: "1:868888139963:web:2d933464a111b2b17c319e"
 };
-
-var db, refDB;
-var INST = ["Drums", "Vocals", "Bass Guitar", "Acoustic Guitar", "Piano"];
-var KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-var user = null;
-var tab = "dash";
-
-// Wait for Firebase to load before initializing
-function waitForFirebase() {
-  if (typeof firebase === 'undefined') {
-    setTimeout(waitForFirebase, 100);
-  } else {
-    initFirebase();
-  }
-}
 
 function initFirebase() {
   try {
-    if (firebase.apps.length === 0) {
+    if (!firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
     }
     db = firebase.database();
     refDB = db.ref("worship");
+    firebaseReady = true;
     
     db.ref(".info/connected").on("value", function(snap) {
       if (snap.val() === true) {
         document.getElementById("sync-text").textContent = "✓ Live sync connected";
       } else {
-        document.getElementById("sync-text").textContent = "✗ Offline - check connection";
+        document.getElementById("sync-text").textContent = "✗ Offline";
       }
     });
     
     show();
   } catch (e) {
-    console.error("Firebase init error:", e);
-    document.getElementById("sync-text").textContent = "✗ Firebase error: " + e.message;
+    console.error("Firebase error:", e);
+    document.getElementById("sync-text").textContent = "✗ Error: " + e.message;
   }
 }
+
+// Check for Firebase every 500ms, up to 10 seconds
+var checkCount = 0;
+var firebaseCheck = setInterval(function() {
+  checkCount++;
+  if (typeof firebase !== 'undefined') {
+    clearInterval(firebaseCheck);
+    initFirebase();
+  } else if (checkCount > 20) {
+    clearInterval(firebaseCheck);
+    document.getElementById("sync-text").textContent = "✗ Firebase not loading";
+    show();
+  }
+}, 500);
 
 function getMe() {
   var uid = sessionStorage.getItem("uid");
@@ -153,6 +158,7 @@ function login() {
 }
 
 function signup() {
+  if (!firebaseReady) return alert("Firebase not ready");
   var nm = document.getElementById("nm").value.trim();
   var pw = document.getElementById("pw").value;
   var rl = document.getElementById("rl").value;
@@ -176,6 +182,7 @@ function signup() {
 }
 
 function signin() {
+  if (!firebaseReady) return alert("Firebase not ready");
   var nm = document.getElementById("nm").value.trim();
   var pw = document.getElementById("pw").value;
   
@@ -231,7 +238,9 @@ function doneInst() {
   if (!selected.length) return alert("Pick one");
   
   var uid = sessionStorage.getItem("uid");
-  refDB.child("users/" + uid).update({ inst: selected });
+  if (firebaseReady) {
+    refDB.child("users/" + uid).update({ inst: selected });
+  }
   tab = "dash";
   show();
 }
@@ -268,6 +277,13 @@ function plan() {
     '<button onclick="addSvc()">Add</button>' +
     '</div>';
   
+  if (!firebaseReady) {
+    h += '<div class="card" style="color: #999">Loading services...</div>';
+    render(h);
+    nav(tabs);
+    return;
+  }
+  
   refDB.child("services").once("value").then(function(snap) {
     snap.forEach(function(child) {
       var s = child.val();
@@ -281,6 +297,7 @@ function plan() {
 }
 
 function addSvc() {
+  if (!firebaseReady) return alert("Firebase not ready");
   var t = document.getElementById("st").value;
   var d = document.getElementById("sd").value;
   var tm = document.getElementById("sm").value;
@@ -299,6 +316,8 @@ function addSvc() {
 
 function editSvc(id) {
   var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
+  
+  if (!firebaseReady) return plan();
   
   refDB.child("services/" + id).once("value").then(function(snap) {
     var s = snap.val();
@@ -342,10 +361,12 @@ function editSvc(id) {
 }
 
 function addAssign(sid, inst, uid) {
+  if (!firebaseReady) return;
   refDB.child("services/" + sid + "/slots/" + inst + "/" + uid).set(true);
 }
 
 function delAssign(sid, inst, uid) {
+  if (!firebaseReady) return;
   refDB.child("services/" + sid + "/slots/" + inst + "/" + uid).remove();
 }
 
@@ -366,6 +387,13 @@ function songs() {
       '<label>Lyrics</label>' +
       '<textarea id="sl" rows="4" placeholder="Lyrics..."></textarea>' +
       '<button onclick="addSong()">Add</button></div>';
+  }
+  
+  if (!firebaseReady) {
+    h += '<div class="card" style="color: #999">Loading songs...</div>';
+    render(h);
+    nav(tabs);
+    return;
   }
   
   refDB.child("songs").once("value").then(function(snap) {
@@ -393,6 +421,7 @@ function songs() {
 }
 
 function addSong() {
+  if (!firebaseReady) return alert("Firebase not ready");
   var nm = document.getElementById("sn").value.trim();
   var ky = document.getElementById("sk").value;
   var nt = document.getElementById("sn2").value.trim();
@@ -409,6 +438,7 @@ function addSong() {
 }
 
 function delSong(id) {
+  if (!firebaseReady) return;
   refDB.child("songs/" + id).remove();
   songs();
 }
@@ -419,23 +449,24 @@ function my() {
   
   var h = '<h2>Your Services</h2>';
   
+  if (!firebaseReady) {
+    h += '<div class="card" style="color: #999">Loading...</div>';
+    render(h);
+    nav(tabs);
+    return;
+  }
+  
   refDB.child("services").once("value").then(function(snap) {
     var found = false;
     snap.forEach(function(child) {
       var s = child.val();
-      var ids = [];
       if (s.slots) {
         for (var inst in s.slots) {
-          for (var u in s.slots[inst]) {
-            if (u === uid) {
-              ids.push(true);
-              found = true;
-            }
+          if (s.slots[inst] && s.slots[inst][uid]) {
+            found = true;
+            h += '<div class="card"><b>' + s.name + '</b><br><small>' + s.date + ' ' + s.time + '</small></div>';
           }
         }
-      }
-      if (ids.length) {
-        h += '<div class="card"><b>' + s.name + '</b><br><small>' + s.date + ' ' + s.time + '</small></div>';
       }
     });
     
@@ -456,25 +487,20 @@ function avail() {
   var h = '<div class="card"><h2>Mark Unavailable</h2>';
   var d = new Date();
   
-  refDB.child("users/" + uid + "/off").once("value").then(function(snap) {
-    var off = snap.val() || {};
-    
-    for (var i = 0; i < 30; i++) {
-      var x = new Date(d);
-      x.setDate(x.getDate() + i);
-      var ds = x.toISOString().split("T")[0];
-      var isOff = off[ds] ? true : false;
-      h += '<span class="chip' + (isOff ? ' on' : '') + '" onclick="toggleOff(\'' + ds + '\')">' + x.getDate() + '</span>';
-    }
-    
-    h += '</div>';
-    render(h);
-  });
+  for (var i = 0; i < 30; i++) {
+    var x = new Date(d);
+    x.setDate(x.getDate() + i);
+    var ds = x.toISOString().split("T")[0];
+    h += '<span class="chip" onclick="toggleOff(\'' + ds + '\')">' + x.getDate() + '</span>';
+  }
   
+  h += '</div>';
+  render(h);
   nav(tabs);
 }
 
 function toggleOff(d) {
+  if (!firebaseReady) return;
   var uid = sessionStorage.getItem("uid");
   refDB.child("users/" + uid + "/off/" + d).once("value").then(function(snap) {
     if (snap.val()) {
@@ -492,6 +518,13 @@ function chat() {
     : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   
   var h = '<div class="card"><h2>Team Chat</h2><div style="border: 1px solid var(--line); padding: 10px; height: 200px; overflow-y: auto; margin: 10px 0; background: var(--bg); border-radius: 6px">';
+  
+  if (!firebaseReady) {
+    h += '<div style="color: #999">Loading chat...</div>';
+    render(h);
+    nav(tabs);
+    return;
+  }
   
   refDB.child("messages").orderByChild("time").limitToLast(50).on("value", function(snap) {
     var msgs = [];
@@ -515,6 +548,7 @@ function chat() {
 }
 
 function sendMsg() {
+  if (!firebaseReady) return alert("Firebase not ready");
   var tx = document.getElementById("mc").value.trim();
   if (!tx) return;
   
@@ -532,6 +566,13 @@ function team() {
   
   var h = '<h2>Team Members</h2>';
   
+  if (!firebaseReady) {
+    h += '<div class="card" style="color: #999">Loading team...</div>';
+    render(h);
+    nav(tabs);
+    return;
+  }
+  
   refDB.child("users").once("value").then(function(snap) {
     h += '<p style="color: #999; margin: 12px 0">' + snap.numChildren() + ' members</p>';
     snap.forEach(function(child) {
@@ -545,8 +586,8 @@ function team() {
   nav(tabs);
 }
 
-// Start the app when Firebase is ready
-waitForFirebase();
+// Initial load
+show();
 </script>
 
 </body>
