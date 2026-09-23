@@ -47,7 +47,7 @@ summary { cursor: pointer; color: var(--accent); }
 <script src="https://www.gstatic.com/firebasejs/10.7.2/firebase-database.js"></script>
 
 <script>
-// ===== FIREBASE CONFIG - UPDATE THIS WITH YOUR CONFIG =====
+// FIREBASE CONFIG - YOUR ACTUAL CONFIG
 const firebaseConfig = {
   apiKey: "AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
   authDomain: "elc-worship-schedule.firebaseapp.com",
@@ -75,7 +75,7 @@ function initFirebase() {
       if (snap.val() === true) {
         document.getElementById("sync-text").textContent = "✓ Live sync connected";
       } else {
-        document.getElementById("sync-text").textContent = "✗ Offline - check Firebase config";
+        document.getElementById("sync-text").textContent = "✗ Offline - check connection";
       }
     });
     
@@ -302,10 +302,6 @@ function editSvc(id) {
       h += '<label>' + ins + '</label>';
       
       for (var uid in assigned) {
-        refDB.child("users/" + uid).once("value").then(function(usnap) {
-          var u = usnap.val();
-          // Live update happens through render
-        });
         h += '<div style="background: #f0f0f0; padding: 6px; margin: 4px 0; display: flex; justify-content: space-between; border-radius: 4px; font-size: 13px">' +
           '<span>' + uid + '</span>' +
           '<button class="sec" style="width: 60px; padding: 4px; margin: 0; font-size: 11px" onclick="delAssign(\'' + id + '\', \'' + ins + '\', \'' + uid + '\')">X</button>' +
@@ -406,7 +402,6 @@ function addSong() {
     r.onload = function() {
       sg.fileSize = fl.size;
       refDB.child("songs/" + id).set(sg).then(function() {
-        // Store file separately due to size limits
         refDB.child("songFiles/" + id).set(r.result).then(function() {
           songs();
         });
