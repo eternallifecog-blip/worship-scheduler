@@ -43,11 +43,11 @@ summary { cursor: pointer; color: var(--accent); }
 
 <main id="main"></main>
 
-<script src="https://www.gstatic.com/firebasejs/10.7.2/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.2/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js"></script>
 
 <script>
-// FIREBASE CONFIG - YOUR ACTUAL CONFIG
+// FIREBASE CONFIG
 const firebaseConfig = {
   apiKey: "AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
   authDomain: "elc-worship-schedule.firebaseapp.com",
@@ -65,9 +65,20 @@ var KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 var user = null;
 var tab = "dash";
 
+// Wait for Firebase to load before initializing
+function waitForFirebase() {
+  if (typeof firebase === 'undefined') {
+    setTimeout(waitForFirebase, 100);
+  } else {
+    initFirebase();
+  }
+}
+
 function initFirebase() {
   try {
-    firebase.initializeApp(firebaseConfig);
+    if (firebase.apps.length === 0) {
+      firebase.initializeApp(firebaseConfig);
+    }
     db = firebase.database();
     refDB = db.ref("worship");
     
@@ -82,7 +93,7 @@ function initFirebase() {
     show();
   } catch (e) {
     console.error("Firebase init error:", e);
-    document.getElementById("sync-text").textContent = "✗ Firebase config error";
+    document.getElementById("sync-text").textContent = "✗ Firebase error: " + e.message;
   }
 }
 
@@ -354,8 +365,6 @@ function songs() {
       '<input type="text" id="sn2" placeholder="e.g. 120 BPM">' +
       '<label>Lyrics</label>' +
       '<textarea id="sl" rows="4" placeholder="Lyrics..."></textarea>' +
-      '<label>File (under 5MB)</label>' +
-      '<input type="file" id="sf">' +
       '<button onclick="addSong()">Add</button></div>';
   }
   
@@ -388,36 +397,19 @@ function addSong() {
   var ky = document.getElementById("sk").value;
   var nt = document.getElementById("sn2").value.trim();
   var ly = document.getElementById("sl").value.trim();
-  var fl = document.getElementById("sf").files[0];
   
   if (!nm) return alert("Title?");
   
   var sg = { title: nm, key: ky, notes: nt, lyrics: ly };
   var id = "sg_" + Math.random().toString().substr(2, 9);
   
-  if (fl) {
-    if (fl.size > 5000000) return alert("File too big (5MB max)");
-    var r = new FileReader();
-    r.onerror = function() { alert("File read error"); };
-    r.onload = function() {
-      sg.fileSize = fl.size;
-      refDB.child("songs/" + id).set(sg).then(function() {
-        refDB.child("songFiles/" + id).set(r.result).then(function() {
-          songs();
-        });
-      });
-    };
-    r.readAsDataURL(fl);
-  } else {
-    refDB.child("songs/" + id).set(sg).then(function() {
-      songs();
-    });
-  }
+  refDB.child("songs/" + id).set(sg).then(function() {
+    songs();
+  });
 }
 
 function delSong(id) {
   refDB.child("songs/" + id).remove();
-  refDB.child("songFiles/" + id).remove();
   songs();
 }
 
@@ -553,7 +545,8 @@ function team() {
   nav(tabs);
 }
 
-initFirebase();
+// Start the app when Firebase is ready
+waitForFirebase();
 </script>
 
 </body>
