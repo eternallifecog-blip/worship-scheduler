@@ -150,17 +150,25 @@ function show() {
 function login() {
   var h = '<div class="card"><h2>Worship Scheduler</h2>' +
     '<p style="color: #999; margin-bottom: 20px">Sign in or create an account</p>' +
+    
+    '<details open style="margin-bottom: 20px"><summary style="cursor: pointer; color: var(--accent); font-weight: bold">📝 NEW ACCOUNT</summary>' +
+    '<div style="margin-top: 12px">' +
     '<input type="text" id="nm" placeholder="Full Name">' +
     '<input type="email" id="em" placeholder="Email Address">' +
     '<input type="tel" id="ph" placeholder="Phone Number (e.g. +1234567890)">' +
     '<input type="password" id="pw" placeholder="Password (4+ chars)">' +
     '<label>Role</label>' +
     '<select id="rl"><option value="member">Team Member</option><option value="admin">Admin</option></select>' +
+    '<p style="color: #999; font-size: 12px">💡 First account auto-approves. Others await admin approval.</p>' +
     '<button onclick="signup()">Create Account</button>' +
-    '<p style="color: #999; text-align: center; margin: 16px 0">Already have an account?</p>' +
-    '<input type="text" id="nm2" placeholder="Your Name" style="margin-top: 8px">' +
+    '</div></details>' +
+    
+    '<details style="margin-bottom: 20px"><summary style="cursor: pointer; color: var(--accent); font-weight: bold">🔑 SIGN IN</summary>' +
+    '<div style="margin-top: 12px">' +
+    '<input type="text" id="nm2" placeholder="Your Name">' +
     '<input type="password" id="pw2" placeholder="Password">' +
     '<button class="sec" onclick="signin()">Sign In</button>' +
+    '</div></details>' +
     '</div>';
   nav([]);
   render(h);
@@ -176,21 +184,32 @@ function signup() {
   if (!nm || !em || !ph || pw.length < 4) return alert("Please fill all fields");
   
   var uid = "u_" + Math.random().toString().substr(2, 9);
-  refDB.child("users/" + uid).set({
-    name: nm,
-    email: em,
-    phone: ph,
-    pass: pw,
-    role: rl,
-    inst: [],
-    off: {},
-    status: "pending",
-    createdAt: new Date().getTime()
-  }).then(function() {
-    alert("Account created! Waiting for admin approval...");
-    login();
-  }).catch(function(e) {
-    alert("Error: " + e.message);
+  
+  // Check if this is the first user (auto-approve)
+  refDB.child("users").once("value").then(function(snap) {
+    var isFirstUser = !snap.val() || Object.keys(snap.val()).length === 0;
+    var status = isFirstUser ? "approved" : "pending";
+    
+    refDB.child("users/" + uid).set({
+      name: nm,
+      email: em,
+      phone: ph,
+      pass: pw,
+      role: rl,
+      inst: [],
+      off: {},
+      status: status,
+      createdAt: new Date().getTime()
+    }).then(function() {
+      if (isFirstUser) {
+        alert("✓ First admin created! You're approved. Sign in now.");
+      } else {
+        alert("✓ Account created! Waiting for admin approval...");
+      }
+      login();
+    }).catch(function(e) {
+      alert("Error: " + e.message);
+    });
   });
 }
 
@@ -199,26 +218,45 @@ function signin() {
   var nm = document.getElementById("nm2").value.trim();
   var pw = document.getElementById("pw2").value;
   
+  if (!nm || !pw) return alert("Enter name and password");
+  
   refDB.child("users").once("value").then(function(snap) {
     var found = false;
+    var wrongPwd = false;
+    
     snap.forEach(function(child) {
       var u = child.val();
-      if (u.name === nm && u.pass === pw) {
-        if (u.status !== "approved") {
-          alert("Your account is pending admin approval");
+      if (u.name === nm) {
+        found = true;
+        if (u.pass !== pw) {
+          wrongPwd = true;
           return;
         }
-        sessionStorage.setItem("uid", child.key);
-        sessionStorage.setItem("name", u.name);
-        sessionStorage.setItem("role", u.role);
-        if (u.inst) {
-          sessionStorage.setItem("inst", u.inst.join("|"));
+        
+        if (u.status === "pending") {
+          alert("⏳ Your account is awaiting admin approval.\n\nAdmin will review and approve your request.");
+          return;
         }
-        found = true;
-        show();
+        
+        if (u.status === "rejected") {
+          alert("❌ Your account was rejected by admin");
+          return;
+        }
+        
+        if (u.status === "approved") {
+          sessionStorage.setItem("uid", child.key);
+          sessionStorage.setItem("name", u.name);
+          sessionStorage.setItem("role", u.role);
+          if (u.inst) {
+            sessionStorage.setItem("inst", u.inst.join("|"));
+          }
+          show();
+        }
       }
     });
-    if (!found) alert("Name or password incorrect");
+    
+    if (!found) alert("❌ Account not found");
+    else if (wrongPwd) alert("❌ Password incorrect");
   });
 }
 
