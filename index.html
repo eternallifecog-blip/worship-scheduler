@@ -319,44 +319,68 @@ function editSvc(id) {
   
   if (!firebaseReady) return plan();
   
-  refDB.child("services/" + id).once("value").then(function(snap) {
-    var s = snap.val();
+  // Load service and all users at once
+  refDB.child("services/" + id).once("value").then(function(snapSvc) {
+    var s = snapSvc.val();
     if (!s) return plan();
     
-    var h = '<div class="card"><h2>' + s.name + '</h2>';
-    
-    for (var i = 0; i < INST.length; i++) {
-      var ins = INST[i];
-      var assigned = s.slots && s.slots[ins] ? s.slots[ins] : {};
-      
-      h += '<label>' + ins + '</label>';
-      
-      for (var uid in assigned) {
-        h += '<div style="background: #f0f0f0; padding: 6px; margin: 4px 0; display: flex; justify-content: space-between; border-radius: 4px; font-size: 13px">' +
-          '<span>' + uid + '</span>' +
-          '<button class="sec" style="width: 60px; padding: 4px; margin: 0; font-size: 11px" onclick="delAssign(\'' + id + '\', \'' + ins + '\', \'' + uid + '\')">X</button>' +
-          '</div>';
-      }
-      
-      h += '<select onchange="if(this.value) addAssign(\'' + id + '\', \'' + ins + '\', this.value); this.value=\'\'"><option>+ ' + ins + '</option>';
-      
-      refDB.child("users").once("value").then(function(usnap) {
-        usnap.forEach(function(child) {
-          var u = child.val();
-          var inst = u.inst || [];
-          if (inst.indexOf(ins) >= 0 && (!assigned || !assigned[child.key])) {
-            h += '<option value="' + child.key + '">' + u.name + '</option>';
-          }
-        });
+    // Now load all users
+    refDB.child("users").once("value").then(function(snapUsers) {
+      var allUsers = {};
+      snapUsers.forEach(function(child) {
+        allUsers[child.key] = child.val();
       });
       
-      h += '</select>';
-    }
-    
-    h += '<button class="sec" style="margin-top: 20px" onclick="plan()">Back</button></div>';
-    
-    nav(tabs);
-    render(h);
+      // Now build the HTML with all data loaded
+      var h = '<div class="card"><h2>' + s.name + '</h2><small style="color: #999">' + s.date + ' at ' + s.time + '</small>';
+      
+      for (var i = 0; i < INST.length; i++) {
+        var ins = INST[i];
+        var assigned = s.slots && s.slots[ins] ? s.slots[ins] : {};
+        
+        h += '<div style="margin-top: 16px; padding: 12px; background: var(--bg); border-radius: 6px">';
+        h += '<label style="margin: 0 0 8px 0">' + ins + '</label>';
+        
+        // Show assigned members
+        h += '<div style="margin-bottom: 8px">';
+        var hasAssigned = false;
+        for (var uid in assigned) {
+          hasAssigned = true;
+          var u = allUsers[uid];
+          if (u) {
+            h += '<div style="background: var(--accent); color: white; padding: 6px; margin: 4px 0; display: flex; justify-content: space-between; border-radius: 4px; font-size: 13px; align-items: center">' +
+              '<span>' + u.name + '</span>' +
+              '<button class="sec" style="width: 50px; padding: 3px; margin: 0; font-size: 10px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white" onclick="delAssign(\'' + id + '\', \'' + ins + '\', \'' + uid + '\')">Remove</button>' +
+              '</div>';
+          }
+        }
+        if (!hasAssigned) {
+          h += '<div style="color: #999; font-size: 12px; padding: 8px">No one assigned</div>';
+        }
+        h += '</div>';
+        
+        // Dropdown to add members
+        h += '<select id="sel_' + ins + '" onchange="if(this.value) addAssign(\'' + id + '\', \'' + ins + '\', this.value); this.value=\'\';" style="font-size: 12px">';
+        h += '<option value="">+ Add ' + ins + '...</option>';
+        
+        for (var uid in allUsers) {
+          var u = allUsers[uid];
+          var inst = u.inst || [];
+          // Show this user if they play this instrument AND aren't already assigned
+          if (inst.indexOf(ins) >= 0 && (!assigned || !assigned[uid])) {
+            h += '<option value="' + uid + '">' + u.name + '</option>';
+          }
+        }
+        
+        h += '</select>';
+        h += '</div>';
+      }
+      
+      h += '<button class="sec" style="margin-top: 20px; width: 100%" onclick="plan()">Back to Services</button></div>';
+      
+      nav(tabs);
+      render(h);
+    });
   });
 }
 
