@@ -487,15 +487,29 @@ function avail() {
   var h = '<div class="card"><h2>Mark Unavailable</h2>';
   var d = new Date();
   
-  for (var i = 0; i < 30; i++) {
-    var x = new Date(d);
-    x.setDate(x.getDate() + i);
-    var ds = x.toISOString().split("T")[0];
-    h += '<span class="chip" onclick="toggleOff(\'' + ds + '\')">' + x.getDate() + '</span>';
+  if (!firebaseReady) {
+    h += '<div style="color: #999">Loading...</div>';
+    render(h);
+    nav(tabs);
+    return;
   }
   
-  h += '</div>';
-  render(h);
+  refDB.child("users/" + uid + "/off").once("value").then(function(snap) {
+    var off = snap.val() || {};
+    
+    for (var i = 0; i < 30; i++) {
+      var x = new Date(d);
+      x.setDate(x.getDate() + i);
+      var ds = x.toISOString().split("T")[0];
+      var isOff = off[ds] ? true : false;
+      var cls = isOff ? " on" : "";
+      h += '<span class="chip' + cls + '" onclick="toggleOff(\'' + ds + '\')">' + x.getDate() + '</span>';
+    }
+    
+    h += '</div>';
+    render(h);
+  });
+  
   nav(tabs);
 }
 
@@ -508,7 +522,9 @@ function toggleOff(d) {
     } else {
       refDB.child("users/" + uid + "/off/" + d).set(true);
     }
-    avail();
+    setTimeout(function() {
+      avail();
+    }, 100);
   });
 }
 
