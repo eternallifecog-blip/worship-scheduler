@@ -480,52 +480,132 @@ function my() {
   nav(tabs);
 }
 
+var selectedDays = {};
+
 function avail() {
   var tabs = [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   var uid = sessionStorage.getItem("uid");
   
-  var h = '<div class="card"><h2>Mark Unavailable</h2>';
-  var d = new Date();
-  
   if (!firebaseReady) {
-    h += '<div style="color: #999">Loading...</div>';
-    render(h);
+    render('<div class="card" style="color: #999">Loading...</div>');
     nav(tabs);
     return;
   }
   
+  // Load saved off days from Firebase
   refDB.child("users/" + uid + "/off").once("value").then(function(snap) {
     var off = snap.val() || {};
+    selectedDays = {};
     
-    for (var i = 0; i < 30; i++) {
-      var x = new Date(d);
-      x.setDate(x.getDate() + i);
-      var ds = x.toISOString().split("T")[0];
-      var isOff = off[ds] ? true : false;
-      var cls = isOff ? " on" : "";
-      h += '<span class="chip' + cls + '" onclick="toggleOff(\'' + ds + '\')">' + x.getDate() + '</span>';
+    // Copy Firebase data to selectedDays
+    for (var key in off) {
+      selectedDays[key] = true;
     }
     
-    h += '</div>';
-    render(h);
+    // Now render the calendar
+    renderYearCalendar(uid);
   });
   
   nav(tabs);
 }
 
-function toggleOff(d) {
-  if (!firebaseReady) return;
-  var uid = sessionStorage.getItem("uid");
-  refDB.child("users/" + uid + "/off/" + d).once("value").then(function(snap) {
-    if (snap.val()) {
-      refDB.child("users/" + uid + "/off/" + d).remove();
-    } else {
-      refDB.child("users/" + uid + "/off/" + d).set(true);
+function renderYearCalendar(uid) {
+  var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  var today = new Date();
+  var currentYear = today.getFullYear();
+  
+  var h = '<div><h2>Select Off Days for the Year</h2>' +
+    '<p style="color: #999; font-size: 12px">Click dates to mark unavailable. Click "Save" when done.</p>' +
+    '<div style="overflow-x: auto">';
+  
+  // Show current year and next year
+  for (var year = currentYear; year <= currentYear + 1; year++) {
+    h += '<div style="display: inline-block; margin: 10px; min-width: 250px">';
+    h += '<h3 style="text-align: center; margin: 8px 0">' + year + '</h3>';
+    
+    for (var m = 0; m < 12; m++) {
+      var monthDate = new Date(year, m, 1);
+      var daysInMonth = new Date(year, m + 1, 0).getDate();
+      var firstDay = monthDate.getDay();
+      
+      h += '<div style="margin: 10px 0">';
+      h += '<div style="font-weight: bold; font-size: 13px; text-align: center; padding: 4px">' + months[m] + '</div>';
+      h += '<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 8px">';
+      
+      // Day headers (Sun-Sat)
+      var dayHeaders = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+      for (var dh = 0; dh < 7; dh++) {
+        h += '<div style="text-align: center; font-size: 10px; font-weight: bold; color: #999">' + dayHeaders[dh] + '</div>';
+      }
+      
+      // Empty cells before first day
+      for (var e = 0; e < firstDay; e++) {
+        h += '<div></div>';
+      }
+      
+      // Days of month
+      for (var day = 1; day <= daysInMonth; day++) {
+        var dateStr = year + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        var isSelected = selectedDays[dateStr] ? true : false;
+        var isToday = (year === today.getFullYear() && m === today.getMonth() && day === today.getDate());
+        var style = 'cursor: pointer; padding: 6px; text-align: center; font-size: 12px; border-radius: 4px; border: 1px solid var(--line); ';
+        
+        if (isSelected) {
+          style += 'background: var(--accent); color: white; font-weight: bold; border-color: var(--accent);';
+        } else if (isToday) {
+          style += 'border: 2px solid var(--accent);';
+        } else {
+          style += 'background: var(--bg);';
+        }
+        
+        h += '<div style="' + style + '" onclick="toggleDay(\'' + dateStr + '\')">' + day + '</div>';
+      }
+      
+      h += '</div></div>';
     }
-    setTimeout(function() {
-      avail();
-    }, 100);
+    
+    h += '</div>';
+  }
+  
+  h += '</div>';
+  h += '<button style="margin-top: 20px" onclick="saveOffDays()">Save Off Days</button>';
+  h += '<button class="sec" style="margin-top: 8px" onclick="clearAllDays()">Clear All</button>';
+  
+  render(h);
+}
+
+function toggleDay(dateStr) {
+  if (selectedDays[dateStr]) {
+    delete selectedDays[dateStr];
+  } else {
+    selectedDays[dateStr] = true;
+  }
+  
+  // Re-render to show changes immediately
+  var uid = sessionStorage.getItem("uid");
+  renderYearCalendar(uid);
+}
+
+function saveOffDays() {
+  if (!firebaseReady) return alert("Firebase not ready");
+  
+  var uid = sessionStorage.getItem("uid");
+  
+  // Save selectedDays to Firebase
+  refDB.child("users/" + uid + "/off").set(selectedDays).then(function() {
+    alert("Off days saved!");
+    avail();
+  }).catch(function(e) {
+    alert("Error saving: " + e.message);
   });
+}
+
+function clearAllDays() {
+  if (confirm("Clear all selected off days?")) {
+    selectedDays = {};
+    var uid = sessionStorage.getItem("uid");
+    renderYearCalendar(uid);
+  }
 }
 
 function chat() {
