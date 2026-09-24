@@ -339,28 +339,28 @@ function editSvc(id) {
         var assigned = s.slots && s.slots[ins] ? s.slots[ins] : {};
         
         h += '<div style="margin-top: 16px; padding: 12px; background: var(--bg); border-radius: 6px">';
-        h += '<label style="margin: 0 0 8px 0">' + ins + '</label>';
+        h += '<label style="margin: 0 0 8px 0"><b>' + ins + '</b></label>';
         
         // Show assigned members
-        h += '<div style="margin-bottom: 8px">';
+        h += '<div style="margin-bottom: 12px" id="assigned_' + ins + '">';
         var hasAssigned = false;
         for (var uid in assigned) {
           hasAssigned = true;
           var u = allUsers[uid];
           if (u) {
-            h += '<div style="background: var(--accent); color: white; padding: 6px; margin: 4px 0; display: flex; justify-content: space-between; border-radius: 4px; font-size: 13px; align-items: center">' +
-              '<span>' + u.name + '</span>' +
-              '<button class="sec" style="width: 50px; padding: 3px; margin: 0; font-size: 10px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white" onclick="delAssign(\'' + id + '\', \'' + ins + '\', \'' + uid + '\')">Remove</button>' +
+            h += '<div style="background: var(--accent); color: white; padding: 8px; margin: 4px 0; display: flex; justify-content: space-between; border-radius: 4px; font-size: 13px; align-items: center">' +
+              '<span>✓ ' + u.name + '</span>' +
+              '<button class="sec" style="width: 50px; padding: 4px 8px; margin: 0; font-size: 11px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white" onclick="delAssign(\'' + id + '\', \'' + ins + '\', \'' + uid + '\')">Remove</button>' +
               '</div>';
           }
         }
         if (!hasAssigned) {
-          h += '<div style="color: #999; font-size: 12px; padding: 8px">No one assigned</div>';
+          h += '<div style="color: #999; font-size: 12px; padding: 8px; font-style: italic">No one assigned yet</div>';
         }
         h += '</div>';
         
         // Dropdown to add members
-        h += '<select id="sel_' + ins + '" onchange="if(this.value) addAssign(\'' + id + '\', \'' + ins + '\', this.value); this.value=\'\';" style="font-size: 12px">';
+        h += '<select class="member-select" onchange="addAssignAndRefresh(\'' + id + '\', \'' + ins + '\', this.value)">';
         h += '<option value="">+ Add ' + ins + '...</option>';
         
         for (var uid in allUsers) {
@@ -376,11 +376,25 @@ function editSvc(id) {
         h += '</div>';
       }
       
-      h += '<button class="sec" style="margin-top: 20px; width: 100%" onclick="plan()">Back to Services</button></div>';
+      h += '<button class="sec" style="margin-top: 20px; width: 100%; padding: 12px" onclick="plan()"><b>Back to Services</b></button></div>';
       
       nav(tabs);
       render(h);
     });
+  });
+}
+
+function addAssignAndRefresh(sid, inst, uid) {
+  if (!uid || !firebaseReady) return;
+  
+  // Add the assignment to Firebase
+  refDB.child("services/" + sid + "/slots/" + inst + "/" + uid).set(true).then(function() {
+    // After save, refresh the assignment screen
+    setTimeout(function() {
+      editSvc(sid);
+    }, 300);
+  }).catch(function(e) {
+    alert("Error assigning: " + e.message);
   });
 }
 
