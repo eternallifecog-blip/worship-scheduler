@@ -29,6 +29,8 @@ nav button { margin: 0; padding: 8px 12px; width: auto; font-size: 13px; }
 details { margin: 8px 0; }
 summary { cursor: pointer; color: var(--accent); }
 .status { font-size: 11px; color: #999; margin-top: 4px; }
+.pending { background: #fff3cd; color: #856404; padding: 10px; border-radius: 6px; margin: 8px 0; }
+.approved { background: #d4edda; color: #155724; padding: 10px; border-radius: 6px; margin: 8px 0; }
 </style>
 </head>
 <body>
@@ -53,6 +55,7 @@ var INST = ["Drums", "Vocals", "Bass Guitar", "Acoustic Guitar", "Piano"];
 var KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 var user = null;
 var tab = "dash";
+var selectedDays = {};
 
 const firebaseConfig = {
   apiKey: "AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
@@ -88,7 +91,6 @@ function initFirebase() {
   }
 }
 
-// Check for Firebase every 500ms, up to 10 seconds
 var checkCount = 0;
 var firebaseCheck = setInterval(function() {
   checkCount++;
@@ -140,17 +142,24 @@ function show() {
     else if (tab === "avail") avail();
     else if (tab === "chat") chat();
     else if (tab === "team") team();
+    else if (tab === "pending") pending();
     else dash();
   }
 }
 
 function login() {
-  var h = '<div class="card"><h2>Sign In / Create</h2>' +
-    '<input type="text" id="nm" placeholder="Name">' +
+  var h = '<div class="card"><h2>Worship Scheduler</h2>' +
+    '<p style="color: #999; margin-bottom: 20px">Sign in or create an account</p>' +
+    '<input type="text" id="nm" placeholder="Full Name">' +
+    '<input type="email" id="em" placeholder="Email Address">' +
+    '<input type="tel" id="ph" placeholder="Phone Number (e.g. +1234567890)">' +
     '<input type="password" id="pw" placeholder="Password (4+ chars)">' +
     '<label>Role</label>' +
-    '<select id="rl"><option value="member">Member</option><option value="admin">Admin</option></select>' +
-    '<button onclick="signup()">Create</button>' +
+    '<select id="rl"><option value="member">Team Member</option><option value="admin">Admin</option></select>' +
+    '<button onclick="signup()">Create Account</button>' +
+    '<p style="color: #999; text-align: center; margin: 16px 0">Already have an account?</p>' +
+    '<input type="text" id="nm2" placeholder="Your Name" style="margin-top: 8px">' +
+    '<input type="password" id="pw2" placeholder="Password">' +
     '<button class="sec" onclick="signin()">Sign In</button>' +
     '</div>';
   nav([]);
@@ -160,22 +169,26 @@ function login() {
 function signup() {
   if (!firebaseReady) return alert("Firebase not ready");
   var nm = document.getElementById("nm").value.trim();
+  var em = document.getElementById("em").value.trim();
+  var ph = document.getElementById("ph").value.trim();
   var pw = document.getElementById("pw").value;
   var rl = document.getElementById("rl").value;
-  if (!nm || pw.length < 4) return alert("Invalid");
+  if (!nm || !em || !ph || pw.length < 4) return alert("Please fill all fields");
   
   var uid = "u_" + Math.random().toString().substr(2, 9);
   refDB.child("users/" + uid).set({
     name: nm,
+    email: em,
+    phone: ph,
     pass: pw,
     role: rl,
     inst: [],
-    off: {}
+    off: {},
+    status: "pending",
+    createdAt: new Date().getTime()
   }).then(function() {
-    sessionStorage.setItem("uid", uid);
-    sessionStorage.setItem("name", nm);
-    sessionStorage.setItem("role", rl);
-    show();
+    alert("Account created! Waiting for admin approval...");
+    login();
   }).catch(function(e) {
     alert("Error: " + e.message);
   });
@@ -183,22 +196,29 @@ function signup() {
 
 function signin() {
   if (!firebaseReady) return alert("Firebase not ready");
-  var nm = document.getElementById("nm").value.trim();
-  var pw = document.getElementById("pw").value;
+  var nm = document.getElementById("nm2").value.trim();
+  var pw = document.getElementById("pw2").value;
   
   refDB.child("users").once("value").then(function(snap) {
     var found = false;
     snap.forEach(function(child) {
       var u = child.val();
       if (u.name === nm && u.pass === pw) {
+        if (u.status !== "approved") {
+          alert("Your account is pending admin approval");
+          return;
+        }
         sessionStorage.setItem("uid", child.key);
         sessionStorage.setItem("name", u.name);
         sessionStorage.setItem("role", u.role);
+        if (u.inst) {
+          sessionStorage.setItem("inst", u.inst.join("|"));
+        }
         found = true;
         show();
       }
     });
-    if (!found) alert("Not found");
+    if (!found) alert("Name or password incorrect");
   });
 }
 
@@ -248,7 +268,7 @@ function doneInst() {
 function dash() {
   var role = sessionStorage.getItem("role");
   var tabs = role === "admin" 
-    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]]
     : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   
   if (tab === "logout") {
@@ -264,8 +284,70 @@ function dash() {
   render(h);
 }
 
+function pending() {
+  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]];
+  
+  var h = '<h2>Pending User Approvals</h2>';
+  
+  if (!firebaseReady) {
+    h += '<div class="card" style="color: #999">Loading...</div>';
+    render(h);
+    nav(tabs);
+    return;
+  }
+  
+  refDB.child("users").once("value").then(function(snap) {
+    var pendingUsers = [];
+    snap.forEach(function(child) {
+      var u = child.val();
+      if (u.status === "pending") {
+        pendingUsers.push({ uid: child.key, ...u });
+      }
+    });
+    
+    if (pendingUsers.length === 0) {
+      h += '<div class="card" style="text-align: center; color: #999; padding: 30px">No pending approvals</div>';
+    } else {
+      for (var i = 0; i < pendingUsers.length; i++) {
+        var u = pendingUsers[i];
+        h += '<div class="card pending">' +
+          '<b>' + u.name + '</b>' +
+          '<div style="font-size: 12px; color: #666; margin: 8px 0">' +
+          '📧 ' + u.email + '<br>' +
+          '📱 ' + u.phone + '<br>' +
+          'Role: ' + u.role +
+          '</div>' +
+          '<button onclick="approveUser(\'' + u.uid + '\', \'' + u.name + '\')">✓ Approve</button>' +
+          '<button class="sec" onclick="rejectUser(\'' + u.uid + '\')">✗ Reject</button>' +
+          '</div>';
+      }
+    }
+    render(h);
+  });
+  
+  nav(tabs);
+}
+
+function approveUser(uid, name) {
+  if (!firebaseReady) return;
+  refDB.child("users/" + uid).update({ status: "approved" }).then(function() {
+    alert("✓ " + name + " approved!");
+    pending();
+  });
+}
+
+function rejectUser(uid) {
+  if (!firebaseReady) return;
+  if (confirm("Reject this user?")) {
+    refDB.child("users/" + uid).remove().then(function() {
+      alert("User rejected");
+      pending();
+    });
+  }
+}
+
 function plan() {
-  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
+  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]];
   
   var h = '<div class="card"><h2>Plan Service</h2>' +
     '<label>Type</label>' +
@@ -274,7 +356,7 @@ function plan() {
     '<input type="date" id="sd">' +
     '<label>Time</label>' +
     '<input type="time" id="sm" value="10:00">' +
-    '<button onclick="addSvc()">Add</button>' +
+    '<button onclick="addSvc()">Add Service</button>' +
     '</div>';
   
   if (!firebaseReady) {
@@ -288,7 +370,7 @@ function plan() {
     snap.forEach(function(child) {
       var s = child.val();
       h += '<div class="card"><b>' + s.name + '</b><br><small>' + s.date + ' ' + s.time + '</small>' +
-        '<button class="sec" style="width: 100%; margin-top: 8px" onclick="editSvc(\'' + child.key + '\')">Assign</button></div>';
+        '<button class="sec" style="width: 100%; margin-top: 8px" onclick="editSvc(\'' + child.key + '\')">Assign Team</button></div>';
     });
     render(h);
   });
@@ -315,23 +397,23 @@ function addSvc() {
 }
 
 function editSvc(id) {
-  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
+  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]];
   
   if (!firebaseReady) return plan();
   
-  // Load service and all users at once
   refDB.child("services/" + id).once("value").then(function(snapSvc) {
     var s = snapSvc.val();
     if (!s) return plan();
     
-    // Now load all users
     refDB.child("users").once("value").then(function(snapUsers) {
       var allUsers = {};
       snapUsers.forEach(function(child) {
-        allUsers[child.key] = child.val();
+        var u = child.val();
+        if (u.status === "approved") {
+          allUsers[child.key] = u;
+        }
       });
       
-      // Now build the HTML with all data loaded
       var h = '<div class="card"><h2>' + s.name + '</h2><small style="color: #999">' + s.date + ' at ' + s.time + '</small>';
       
       for (var i = 0; i < INST.length; i++) {
@@ -341,8 +423,7 @@ function editSvc(id) {
         h += '<div style="margin-top: 16px; padding: 12px; background: var(--bg); border-radius: 6px">';
         h += '<label style="margin: 0 0 8px 0"><b>' + ins + '</b></label>';
         
-        // Show assigned members
-        h += '<div style="margin-bottom: 12px" id="assigned_' + ins + '">';
+        h += '<div style="margin-bottom: 12px">';
         var hasAssigned = false;
         for (var uid in assigned) {
           hasAssigned = true;
@@ -359,14 +440,12 @@ function editSvc(id) {
         }
         h += '</div>';
         
-        // Dropdown to add members
-        h += '<select class="member-select" onchange="addAssignAndRefresh(\'' + id + '\', \'' + ins + '\', this.value)">';
+        h += '<select onchange="addAssignAndRefresh(\'' + id + '\', \'' + ins + '\', this.value)">';
         h += '<option value="">+ Add ' + ins + '...</option>';
         
         for (var uid in allUsers) {
           var u = allUsers[uid];
           var inst = u.inst || [];
-          // Show this user if they play this instrument AND aren't already assigned
           if (inst.indexOf(ins) >= 0 && (!assigned || !assigned[uid])) {
             h += '<option value="' + uid + '">' + u.name + '</option>';
           }
@@ -387,20 +466,13 @@ function editSvc(id) {
 function addAssignAndRefresh(sid, inst, uid) {
   if (!uid || !firebaseReady) return;
   
-  // Add the assignment to Firebase
   refDB.child("services/" + sid + "/slots/" + inst + "/" + uid).set(true).then(function() {
-    // After save, refresh the assignment screen
     setTimeout(function() {
       editSvc(sid);
     }, 300);
   }).catch(function(e) {
     alert("Error assigning: " + e.message);
   });
-}
-
-function addAssign(sid, inst, uid) {
-  if (!firebaseReady) return;
-  refDB.child("services/" + sid + "/slots/" + inst + "/" + uid).set(true);
 }
 
 function delAssign(sid, inst, uid) {
@@ -410,7 +482,7 @@ function delAssign(sid, inst, uid) {
 
 function songs() {
   var tabs = sessionStorage.getItem("role") === "admin"
-    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]]
     : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   
   var h = '<h2>Song Library</h2>';
@@ -518,8 +590,6 @@ function my() {
   nav(tabs);
 }
 
-var selectedDays = {};
-
 function avail() {
   var tabs = [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   var uid = sessionStorage.getItem("uid");
@@ -530,17 +600,14 @@ function avail() {
     return;
   }
   
-  // Load saved off days from Firebase
   refDB.child("users/" + uid + "/off").once("value").then(function(snap) {
     var off = snap.val() || {};
     selectedDays = {};
     
-    // Copy Firebase data to selectedDays
     for (var key in off) {
       selectedDays[key] = true;
     }
     
-    // Now render the calendar
     renderYearCalendar(uid);
   });
   
@@ -556,7 +623,6 @@ function renderYearCalendar(uid) {
     '<p style="color: #999; font-size: 12px">Click dates to mark unavailable. Click "Save" when done.</p>' +
     '<div style="overflow-x: auto">';
   
-  // Show current year and next year
   for (var year = currentYear; year <= currentYear + 1; year++) {
     h += '<div style="display: inline-block; margin: 10px; min-width: 250px">';
     h += '<h3 style="text-align: center; margin: 8px 0">' + year + '</h3>';
@@ -570,18 +636,15 @@ function renderYearCalendar(uid) {
       h += '<div style="font-weight: bold; font-size: 13px; text-align: center; padding: 4px">' + months[m] + '</div>';
       h += '<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 8px">';
       
-      // Day headers (Sun-Sat)
       var dayHeaders = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
       for (var dh = 0; dh < 7; dh++) {
         h += '<div style="text-align: center; font-size: 10px; font-weight: bold; color: #999">' + dayHeaders[dh] + '</div>';
       }
       
-      // Empty cells before first day
       for (var e = 0; e < firstDay; e++) {
         h += '<div></div>';
       }
       
-      // Days of month
       for (var day = 1; day <= daysInMonth; day++) {
         var dateStr = year + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
         var isSelected = selectedDays[dateStr] ? true : false;
@@ -619,7 +682,6 @@ function toggleDay(dateStr) {
     selectedDays[dateStr] = true;
   }
   
-  // Re-render to show changes immediately
   var uid = sessionStorage.getItem("uid");
   renderYearCalendar(uid);
 }
@@ -629,7 +691,6 @@ function saveOffDays() {
   
   var uid = sessionStorage.getItem("uid");
   
-  // Save selectedDays to Firebase
   refDB.child("users/" + uid + "/off").set(selectedDays).then(function() {
     alert("Off days saved!");
     avail();
@@ -648,7 +709,7 @@ function clearAllDays() {
 
 function chat() {
   var tabs = sessionStorage.getItem("role") === "admin"
-    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]]
     : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   
   var h = '<div class="card"><h2>Team Chat</h2><div style="border: 1px solid var(--line); padding: 10px; height: 200px; overflow-y: auto; margin: 10px 0; background: var(--bg); border-radius: 6px">';
@@ -696,7 +757,9 @@ function sendMsg() {
 }
 
 function team() {
-  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
+  var tabs = sessionStorage.getItem("role") === "admin"
+    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]]
+    : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   
   var h = '<h2>Team Members</h2>';
   
@@ -708,19 +771,26 @@ function team() {
   }
   
   refDB.child("users").once("value").then(function(snap) {
-    h += '<p style="color: #999; margin: 12px 0">' + snap.numChildren() + ' members</p>';
+    var approvedCount = 0;
     snap.forEach(function(child) {
       var u = child.val();
-      h += '<div class="card"><b>' + u.name + '</b> ' + (u.role === 'admin' ? '<small style="color: #999">(Admin)</small>' : '') +
-        '<br><small style="color: #999">' + (u.inst && u.inst.length ? u.inst.join(", ") : "—") + '</small></div>';
+      if (u.status === "approved") {
+        approvedCount++;
+        h += '<div class="card"><b>' + u.name + '</b> ' + (u.role === 'admin' ? '<small style="color: #999">(Admin)</small>' : '') +
+          '<br><small style="color: #999">' + (u.inst && u.inst.length ? u.inst.join(", ") : "—") + '</small></div>';
+      }
     });
+    
+    if (approvedCount === 0) {
+      h = '<h2>Team Members</h2><div class="card" style="text-align: center; color: #999; padding: 30px">No approved members yet</div>';
+    }
+    
     render(h);
   });
   
   nav(tabs);
 }
 
-// Initial load
 show();
 </script>
 
