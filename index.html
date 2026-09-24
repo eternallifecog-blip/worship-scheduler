@@ -187,7 +187,8 @@ function signup() {
   
   // Check if this is the first user (auto-approve)
   refDB.child("users").once("value").then(function(snap) {
-    var isFirstUser = !snap.val() || Object.keys(snap.val()).length === 0;
+    var userCount = snap.val() ? Object.keys(snap.val()).length : 0;
+    var isFirstUser = userCount === 0;
     var status = isFirstUser ? "approved" : "pending";
     
     refDB.child("users/" + uid).set({
@@ -202,14 +203,21 @@ function signup() {
       createdAt: new Date().getTime()
     }).then(function() {
       if (isFirstUser) {
-        alert("✓ First admin created! You're approved. Sign in now.");
+        alert("✓ First account created and approved!\n\nSign in now with your name and password.");
+        sessionStorage.setItem("uid", uid);
+        sessionStorage.setItem("name", nm);
+        sessionStorage.setItem("role", rl);
+        sessionStorage.setItem("inst", "");
+        show();
       } else {
-        alert("✓ Account created! Waiting for admin approval...");
+        alert("✓ Account created!\n\nWaiting for admin approval to access the app.");
+        login();
       }
-      login();
     }).catch(function(e) {
-      alert("Error: " + e.message);
+      alert("Error creating account: " + e.message);
     });
+  }).catch(function(e) {
+    alert("Error: " + e.message);
   });
 }
 
@@ -221,42 +229,48 @@ function signin() {
   if (!nm || !pw) return alert("Enter name and password");
   
   refDB.child("users").once("value").then(function(snap) {
-    var found = false;
-    var wrongPwd = false;
+    var allUsers = snap.val();
+    if (!allUsers) return alert("❌ No accounts found. Create one first.");
     
-    snap.forEach(function(child) {
-      var u = child.val();
+    var loggedIn = false;
+    var foundUser = null;
+    var foundKey = null;
+    
+    // Find the user
+    for (var key in allUsers) {
+      var u = allUsers[key];
       if (u.name === nm) {
-        found = true;
-        if (u.pass !== pw) {
-          wrongPwd = true;
-          return;
-        }
-        
-        if (u.status === "pending") {
-          alert("⏳ Your account is awaiting admin approval.\n\nAdmin will review and approve your request.");
-          return;
-        }
-        
-        if (u.status === "rejected") {
-          alert("❌ Your account was rejected by admin");
-          return;
-        }
-        
-        if (u.status === "approved") {
-          sessionStorage.setItem("uid", child.key);
-          sessionStorage.setItem("name", u.name);
-          sessionStorage.setItem("role", u.role);
-          if (u.inst) {
-            sessionStorage.setItem("inst", u.inst.join("|"));
-          }
-          show();
-        }
+        foundUser = u;
+        foundKey = key;
+        break;
       }
-    });
+    }
     
-    if (!found) alert("❌ Account not found");
-    else if (wrongPwd) alert("❌ Password incorrect");
+    // Handle different scenarios
+    if (!foundUser) {
+      alert("❌ Account not found.\n\nPlease check your name or create a new account.");
+    } else if (foundUser.pass !== pw) {
+      alert("❌ Password incorrect.\n\nPlease try again.");
+    } else if (foundUser.status === "pending") {
+      alert("⏳ Account Pending Approval\n\nAdmin is reviewing your request.\nYou'll be able to sign in once approved.");
+    } else if (foundUser.status === "rejected") {
+      alert("❌ Your account was rejected.\n\nPlease contact the admin.");
+    } else if (foundUser.status === "approved") {
+      sessionStorage.setItem("uid", foundKey);
+      sessionStorage.setItem("name", foundUser.name);
+      sessionStorage.setItem("role", foundUser.role);
+      if (foundUser.inst && foundUser.inst.length > 0) {
+        sessionStorage.setItem("inst", foundUser.inst.join("|"));
+      } else {
+        sessionStorage.setItem("inst", "");
+      }
+      show();
+      return;
+    } else {
+      alert("❌ Account status unknown: " + foundUser.status);
+    }
+  }).catch(function(e) {
+    alert("Error signing in: " + e.message);
   });
 }
 
