@@ -5,467 +5,632 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Worship Scheduler</title>
 <style>
-:root { --bg: #f6f4ef; --card: #fff; --ink: #22201c; --accent: #7b5e3b; --line: #e3ded4; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1b1917; --card: #252220; --ink: #f0ece5; --accent: #c9a877; --line: #3a3532; } }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px system-ui, sans-serif; }
-header { background: var(--card); padding: 12px; border-bottom: 1px solid var(--line); }
-h1 { margin: 0; font-size: 18px; }
-h2 { margin: 10px 0; font-size: 16px; }
-h3 { margin: 12px 0 8px 0; font-size: 14px; }
-main { max-width: 800px; margin: 0 auto; padding: 16px; }
-.card { background: var(--card); border: 1px solid var(--line); padding: 14px; margin: 12px 0; border-radius: 8px; }
-input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
-button { background: var(--accent); color: #fff; border: 0; padding: 10px; border-radius: 6px; cursor: pointer; margin: 4px 0; width: 100%; }
-button.sec { background: transparent; color: var(--accent); border: 1px solid var(--line); }
-label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 13px; color: #999; }
-.chip { display: inline-block; padding: 6px 12px; border: 1px solid var(--line); border-radius: 20px; margin: 4px; cursor: pointer; background: var(--bg); font-size: 13px; }
-.chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-nav { padding: 8px; display: flex; gap: 4px; overflow-x: auto; background: var(--card); border-bottom: 1px solid var(--line); }
-nav button { margin: 0; padding: 8px 12px; width: auto; font-size: 13px; }
-.status { font-size: 11px; color: #999; margin-top: 4px; }
-.error-box { background: #ffebee; color: #c62828; padding: 10px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #c62828; }
-.success-box { background: #e8f5e9; color: #2e7d32; padding: 10px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #2e7d32; }
-.info-box { background: #fff3e0; color: #e65100; padding: 10px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #ff9800; }
+:root{--bg:#f6f4ef;--card:#fff;--ink:#22201c;--accent:#7b5e3b;--line:#e3ded4}
+@media(prefers-color-scheme:dark){:root{--bg:#1b1917;--card:#252220;--ink:#f0ece5;--accent:#c9a877;--line:#3a3532}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,sans-serif}
+header{background:var(--card);padding:12px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:18px}h2{margin:10px 0;font-size:16px}h3{margin:12px 0 8px;font-size:14px}
+main{max-width:800px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);padding:14px;margin:12px 0;border-radius:8px}
+input,select,textarea{width:100%;padding:10px;margin:6px 0;border:1px solid var(--line);border-radius:6px;font-size:14px}
+button{background:var(--accent);color:#fff;border:0;padding:10px;border-radius:6px;cursor:pointer;margin:4px 0;width:100%}
+button.sec{background:transparent;color:var(--accent);border:1px solid var(--line)}
+label{display:block;margin:10px 0 2px;font-weight:600;font-size:12px;color:#999}
+.chip{display:inline-block;padding:6px 12px;border:1px solid var(--line);border-radius:20px;margin:4px;cursor:pointer;background:var(--bg);font-size:13px}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+nav{padding:8px;display:flex;gap:4px;overflow-x:auto;background:var(--card);border-bottom:1px solid var(--line)}
+nav button{margin:0;padding:8px 12px;width:auto;font-size:13px}
+.status{font-size:11px;color:#999;margin-top:4px}
+.song{background:var(--bg);padding:10px;margin:8px 0;border-radius:6px}
+.msg{background:var(--bg);padding:8px;margin:6px 0;border-radius:4px;font-size:12px}
+.pending{background:#fff3cd;padding:12px;border-radius:6px;margin:8px 0;border-left:4px solid #ff9800}
+.approved{background:#d4edda;padding:12px;border-radius:6px;margin:8px 0;border-left:4px solid #28a745}
+.green{background:#28a745}.red{background:#c23b22}
+.msg-ok{background:#e8f5e9;color:#2e7d32;padding:10px;border-radius:6px;margin:8px 0;border-left:4px solid #28a745}
+.msg-err{background:#ffebee;color:#c62828;padding:10px;border-radius:6px;margin:8px 0;border-left:4px solid #c62828}
+.msg-info{background:#fff3e0;color:#e65100;padding:10px;border-radius:6px;margin:8px 0;border-left:4px solid #ff9800}
 </style>
 </head>
 <body>
-
 <header>
   <h1>🎵 Worship Scheduler</h1>
-  <div id="user-info" style="font-size: 12px; color: #999; margin-top: 4px;"></div>
-  <div class="status" id="sync-text">Initializing Firebase...</div>
+  <div id="uinfo" style="font-size:12px;color:#999;margin-top:4px"></div>
+  <div class="status" id="synctxt">⏳ Starting...</div>
 </header>
-
-<nav id="nav"></nav>
+<nav id="mainnav"></nav>
 <main id="main"></main>
 
 <script async defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script async defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-
 <script>
-var db, refDB;
-var firebaseReady = false;
-var INST = ["Drums", "Vocals", "Bass Guitar", "Acoustic Guitar", "Piano"];
-var user = null;
-var tab = "dash";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
-  authDomain: "elc-worship-schedule.firebaseapp.com",
-  databaseURL: "https://elc-worship-schedule-default-rtdb.firebaseio.com",
-  projectId: "elc-worship-schedule",
-  storageBucket: "elc-worship-schedule.firebasestorage.app",
-  messagingSenderId: "868888139963",
-  appId: "1:868888139963:web:2d933464a111b2b17c319e"
+var db, ref;
+var fbReady = false;
+var tab = "home";
+var selDays = {};
+var INST = ["Drums","Vocals","Bass Guitar","Acoustic Guitar","Piano"];
+var KEYS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+var FB = {
+  apiKey:"AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
+  authDomain:"elc-worship-schedule.firebaseapp.com",
+  databaseURL:"https://elc-worship-schedule-default-rtdb.firebaseio.com",
+  projectId:"elc-worship-schedule",
+  storageBucket:"elc-worship-schedule.firebasestorage.app",
+  messagingSenderId:"868888139963",
+  appId:"1:868888139963:web:2d933464a111b2b17c319e"
 };
 
-function log(msg) {
-  console.log("[Worship] " + msg);
+var tries=0, timer=setInterval(function(){
+  tries++;
+  if(typeof firebase!=="undefined"&&firebase.initializeApp){
+    clearInterval(timer);
+    try{
+      if(!firebase.apps.length) firebase.initializeApp(FB);
+      db=firebase.database();
+      ref=db.ref("worship");
+      fbReady=true;
+      document.getElementById("synctxt").textContent="✓ Connected";
+      db.ref(".info/connected").on("value",function(s){
+        document.getElementById("synctxt").textContent=s.val()?"✓ Connected":"✗ Offline";
+      });
+    }catch(e){
+      document.getElementById("synctxt").textContent="✗ "+e.message;
+    }
+    start();
+  }else if(tries>40){
+    clearInterval(timer);
+    document.getElementById("synctxt").textContent="✗ Firebase failed";
+    start();
+  }
+},500);
+
+function uid(){return sessionStorage.getItem("uid")}
+function uname(){return sessionStorage.getItem("name")}
+function urole(){return sessionStorage.getItem("role")}
+function uinst(){return sessionStorage.getItem("inst")||""}
+
+function isAdmin(){var r=urole();return r==="admin"||r==="co-admin"}
+
+function render(h){document.getElementById("main").innerHTML=h}
+
+function setNav(tabs){
+  document.getElementById("mainnav").innerHTML=tabs.map(function(t){
+    return '<button class="'+(t[0]===tab?"active":"")+(t[0]==="logout"?" sec":"")+
+      '" onclick="goTab(\''+t[0]+'\')">'+t[1]+'</button>';
+  }).join("");
 }
 
-function initFirebase() {
-  try {
-    log("Attempting to initialize Firebase...");
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-      log("Firebase app initialized");
-    }
-    db = firebase.database();
-    refDB = db.ref("worship");
-    firebaseReady = true;
-    log("✓ Firebase is ready!");
-    document.getElementById("sync-text").textContent = "✓ Firebase Connected";
-    
-    db.ref(".info/connected").on("value", function(snap) {
-      if (snap.val() === true) {
-        document.getElementById("sync-text").textContent = "✓ Firebase Connected";
-      } else {
-        document.getElementById("sync-text").textContent = "✗ Offline";
-      }
+function setHeader(){
+  if(uname()){
+    var r=urole(), icon=r==="admin"?"👑":r==="co-admin"?"⭐":"👤";
+    document.getElementById("uinfo").textContent=icon+" "+uname()+" ("+r+")";
+  }else{
+    document.getElementById("uinfo").textContent="";
+  }
+}
+
+function goTab(t){
+  if(t==="logout"){logout();return;}
+  tab=t; start();
+}
+
+function start(){
+  setHeader();
+  if(!uid()){showLogin();return;}
+  if(!uinst()){showInst();return;}
+  if(tab==="home") showHome();
+  else if(tab==="manage") showManage();
+  else if(tab==="plan") showPlan();
+  else if(tab==="songs") showSongs();
+  else if(tab==="my") showMy();
+  else if(tab==="avail") showAvail();
+  else if(tab==="chat") showChat();
+  else if(tab==="team") showTeam();
+  else showHome();
+}
+
+function adminTabs(){return[["home","Home"],["manage","👥 Users"],["plan","Plan"],["songs","Songs"],["chat","Chat"],["team","Team"],["logout","Logout"]]}
+function memberTabs(){return[["home","Home"],["my","Services"],["songs","Songs"],["avail","Off"],["chat","Chat"],["logout","Logout"]]}
+
+function logout(){sessionStorage.clear();tab="home";start();}
+
+/* ===== LOGIN ===== */
+function showLogin(){
+  setNav([]);
+  render('<div class="card" style="max-width:500px;margin:0 auto" id="logincard"><div class="msg-info">⏳ Checking database...</div></div>');
+  
+  if(!fbReady){
+    document.getElementById("logincard").innerHTML='<h2>🎵 Worship Scheduler</h2><div class="msg-err">⏳ Firebase is loading. Please wait and refresh.</div>';
+    return;
+  }
+  
+  ref.child("users").once("value").then(function(snap){
+    var users=snap.val()||{};
+    var hasAdmin=Object.keys(users).some(function(k){
+      return users[k].role==="admin"||users[k].role==="co-admin";
     });
     
-    show();
-  } catch (e) {
-    log("❌ Firebase error: " + e.message);
-    document.getElementById("sync-text").textContent = "❌ Firebase Error: " + e.message;
-  }
-}
-
-var checkCount = 0;
-var firebaseCheck = setInterval(function() {
-  checkCount++;
-  if (typeof firebase !== 'undefined' && firebase.initializeApp) {
-    clearInterval(firebaseCheck);
-    log("Firebase library loaded, initializing...");
-    initFirebase();
-  } else if (checkCount > 50) {
-    clearInterval(firebaseCheck);
-    log("❌ Firebase failed to load after 25 seconds");
-    document.getElementById("sync-text").textContent = "❌ Firebase Failed to Load";
-    show();
-  }
-}, 500);
-
-function getMe() {
-  return sessionStorage.getItem("uid") ? { uid: sessionStorage.getItem("uid") } : null;
-}
-
-function render(h) {
-  document.getElementById("main").innerHTML = h;
-  if (sessionStorage.getItem("name")) {
-    var role = sessionStorage.getItem("role") || "?";
-    var roleIcon = role === "admin" ? "👑" : (role === "co-admin" ? "⭐" : "👤");
-    document.getElementById("user-info").textContent = roleIcon + " " + sessionStorage.getItem("name");
-  }
-}
-
-function nav(tabs) {
-  var h = "";
-  for (var i = 0; i < tabs.length; i++) {
-    var t = tabs[i][0];
-    var l = tabs[i][1];
-    var cls = t === tab ? "active" : "";
-    h += '<button class="' + cls + '" onclick="tab=\'' + t + '\';show()">' + l + '</button>';
-  }
-  document.getElementById("nav").innerHTML = h;
-}
-
-function show() {
-  user = getMe();
-  
-  if (!user) {
-    login();
-  } else if (!sessionStorage.getItem("inst")) {
-    inst();
-  } else {
-    if (tab === "dash") dash();
-    else if (tab === "manage") manage();
-    else if (tab === "plan") plan();
-    else if (tab === "songs") songs();
-    else if (tab === "my") my();
-    else if (tab === "avail") avail();
-    else if (tab === "chat") chat();
-    else if (tab === "team") team();
-    else dash();
-  }
-}
-
-function login() {
-  var h = '<div class="card" style="max-width: 500px; margin: 0 auto">' +
-    '<h2>🎵 Worship Scheduler</h2>' +
+    var html='<h2>🎵 Worship Scheduler</h2>';
     
-    '<div style="margin: 20px 0">' +
-    '<h3 style="margin-top: 0; color: #28a745">📝 Create Admin Account</h3>' +
-    '<div class="info-box"><b>First person to sign up becomes Admin</b></div>' +
-    '<input type="text" id="nm" placeholder="Full Name" style="margin-top: 0">' +
-    '<input type="email" id="em" placeholder="Email" />' +
-    '<input type="tel" id="ph" placeholder="Phone Number" />' +
-    '<input type="password" id="pw" placeholder="Password (4+ chars)" />' +
-    '<button onclick="signup()" style="margin-top: 12px; background: #28a745">Create Account</button>' +
-    '<div id="signup-msg"></div>' +
-    '</div>' +
-    
-    '<div style="border-top: 1px solid var(--line); margin: 20px 0; padding-top: 20px">' +
-    '<h3 style="margin-top: 0">🔑 Sign In</h3>' +
-    '<input type="text" id="nm2" placeholder="Your Name" style="margin-top: 0">' +
-    '<input type="password" id="pw2" placeholder="Password">' +
-    '<button class="sec" onclick="signin()" style="border: 2px solid var(--accent); color: var(--accent)">Sign In</button>' +
-    '<div id="signin-msg"></div>' +
-    '</div>' +
-    
-    '<div style="border-top: 1px solid var(--line); margin: 20px 0; padding-top: 20px">' +
-    '<h3 style="margin-top: 0">🔧 Admin Setup</h3>' +
-    '<p style="color: #999; font-size: 12px; margin: 0 0 12px 0">If you see "Member account created" error but screen showed "First person", the database may have old data.</p>' +
-    '<button class="sec" onclick="resetDatabase()" style="background: #ffcdd2; color: #c62828; border: 1px solid #c62828">🗑️ Clear All Users & Start Fresh</button>' +
-    '<div id="reset-msg"></div>' +
-    '</div>' +
-    '</div>';
-  
-  nav([]);
-  render(h);
-  
-  log("Firebase ready: " + firebaseReady);
-}
-
-function signup() {
-  var nm = document.getElementById("nm").value.trim();
-  var em = document.getElementById("em").value.trim();
-  var ph = document.getElementById("ph").value.trim();
-  var pw = document.getElementById("pw").value;
-  
-  log("SIGNUP: name=" + nm + ", email=" + em + ", phone=" + ph + ", pw_len=" + pw.length);
-  
-  if (!nm) return showMsg("signup-msg", "❌ Enter your name", "error");
-  if (!em) return showMsg("signup-msg", "❌ Enter your email", "error");
-  if (!ph) return showMsg("signup-msg", "❌ Enter your phone", "error");
-  if (pw.length < 4) return showMsg("signup-msg", "❌ Password must be 4+ chars", "error");
-  
-  if (!firebaseReady) {
-    return showMsg("signup-msg", "⏳ Firebase not ready yet. Wait a moment.", "error");
-  }
-  
-  showMsg("signup-msg", "⏳ Creating account...", "info");
-  
-  var uid = "u_" + Math.random().toString().substr(2, 9);
-  log("Generated UID: " + uid);
-  
-  // Check if admin exists
-  refDB.child("users").once("value").then(function(snap) {
-    var hasAdmin = false;
-    var userData = snap.val();
-    log("Users snapshot: " + (userData ? "exists" : "null"));
-    
-    if (userData) {
-      for (var key in userData) {
-        if (userData[key].role === "admin" || userData[key].role === "co-admin") {
-          hasAdmin = true;
-          log("Found existing admin");
-          break;
-        }
-      }
+    if(!hasAdmin){
+      html+='<div class="msg-ok"><b>👑 Setup: Create Your Admin Account</b><br>You are the first user — you will be Admin.</div>'+
+        '<input id="nm" placeholder="Full Name"><input id="em" type="email" placeholder="Email">'+
+        '<input id="ph" type="tel" placeholder="Phone"><input id="pw" type="password" placeholder="Password (4+ chars)">'+
+        '<button onclick="doSignup(true)" style="background:#28a745">Create Admin Account</button>'+
+        '<div id="smsg"></div>';
+    }else{
+      html+='<div class="msg-info"><b>👤 Join the Team</b><br>Your account needs admin approval before signing in.</div>'+
+        '<input id="nm" placeholder="Full Name"><input id="em" type="email" placeholder="Email">'+
+        '<input id="ph" type="tel" placeholder="Phone"><input id="pw" type="password" placeholder="Password (4+ chars)">'+
+        '<button onclick="doSignup(false)">Request to Join</button>'+
+        '<div id="smsg"></div>';
     }
     
-    var role = hasAdmin ? "member" : "admin";
-    log("Assigning role: " + role + ", hasAdmin: " + hasAdmin);
+    html+='<div style="border-top:1px solid var(--line);margin:20px 0;padding-top:20px">'+
+      '<h3 style="margin-top:0">🔑 Sign In</h3>'+
+      '<input id="sn" placeholder="Your Name"><input id="sp" type="password" placeholder="Password">'+
+      '<button class="sec" onclick="doSignin()">Sign In</button>'+
+      '<div id="inmsg"></div></div>';
     
-    var newUser = {
-      name: nm,
-      email: em,
-      phone: ph,
-      pass: pw,
-      role: role,
-      status: "approved",
-      inst: [],
-      off: {},
-      createdAt: new Date().getTime()
-    };
+    if(!hasAdmin){
+      html+='<div style="border-top:1px solid var(--line);margin-top:20px;padding-top:12px">'+
+        '<p style="font-size:12px;color:#999;margin:0 0 8px">Stuck? Clear old data:</p>'+
+        '<button class="sec" style="color:#c62828;border-color:#c62828" onclick="doReset()">🗑 Clear All & Start Fresh</button>'+
+        '<div id="rmsg"></div></div>';
+    }
     
-    log("Writing user to: /worship/users/" + uid);
+    document.getElementById("logincard").innerHTML=html;
+  });
+}
+
+function doSignup(isFirst){
+  var nm=(document.getElementById("nm").value||"").trim();
+  var em=(document.getElementById("em").value||"").trim();
+  var ph=(document.getElementById("ph").value||"").trim();
+  var pw=(document.getElementById("pw").value||"");
+  var msg=document.getElementById("smsg");
+  
+  if(!nm||!em||!ph||pw.length<4){msg.innerHTML='<div class="msg-err">❌ Fill all fields (password 4+ chars)</div>';return;}
+  if(!fbReady){msg.innerHTML='<div class="msg-err">⏳ Firebase not ready</div>';return;}
+  
+  msg.innerHTML='<div class="msg-info">⏳ Creating account...</div>';
+  
+  var id="u_"+Math.random().toString(36).substr(2,9);
+  ref.child("users/"+id).set({
+    name:nm,email:em,phone:ph,pass:pw,
+    role:isFirst?"admin":"member",
+    status:"approved",  /* all auto-approved; admin manages via manage tab */
+    inst:[],off:{},
+    createdAt:Date.now()
+  },function(err){
+    if(err){msg.innerHTML='<div class="msg-err">❌ '+err.message+'</div>';}
+    else{
+      if(isFirst){
+        msg.innerHTML='<div class="msg-ok">✅ Admin account created! Sign in below.</div>';
+        alert("✅ Admin Account Created!\n\nNow sign in below with your name and password.");
+      }else{
+        msg.innerHTML='<div class="msg-ok">✅ Account created! Sign in below.</div>';
+        alert("✅ Account created!\n\nSign in below.");
+      }
+    }
+  });
+}
+
+function doSignin(){
+  var nm=(document.getElementById("sn").value||"").trim();
+  var pw=(document.getElementById("sp").value||"");
+  var msg=document.getElementById("inmsg");
+  
+  if(!nm||!pw){msg.innerHTML='<div class="msg-err">❌ Enter name and password</div>';return;}
+  if(!fbReady){msg.innerHTML='<div class="msg-err">⏳ Firebase not ready</div>';return;}
+  
+  msg.innerHTML='<div class="msg-info">⏳ Signing in...</div>';
+  
+  ref.child("users").once("value").then(function(snap){
+    var users=snap.val()||{};
+    var fk=null,fu=null;
     
-    refDB.child("users/" + uid).set(newUser, function(error) {
-      if (error) {
-        log("❌ Firebase write error: " + error.message);
-        showMsg("signup-msg", "❌ Error: " + error.message, "error");
-      } else {
-        log("✓ User created successfully!");
-        showMsg("signup-msg", "✓ Account created! Now sign in below.", "success");
+    for(var k in users){
+      if(users[k].name===nm){fk=k;fu=users[k];break;}
+    }
+    
+    if(!fu){msg.innerHTML='<div class="msg-err">❌ Name not found</div>';return;}
+    if(fu.pass!==pw){msg.innerHTML='<div class="msg-err">❌ Password incorrect</div>';return;}
+    if(fu.status==="pending"){msg.innerHTML='<div class="msg-err">⏳ Awaiting admin approval</div>';return;}
+    if(fu.status==="rejected"){msg.innerHTML='<div class="msg-err">❌ Account rejected by admin</div>';return;}
+    
+    sessionStorage.setItem("uid",fk);
+    sessionStorage.setItem("name",fu.name);
+    sessionStorage.setItem("role",fu.role);
+    sessionStorage.setItem("inst",fu.inst&&fu.inst.length?fu.inst.join("|"):"");
+    tab="home";
+    start();
+  });
+}
+
+function doReset(){
+  if(!confirm("Delete ALL users and start fresh?")) return;
+  ref.child("users").remove(function(err){
+    var msg=document.getElementById("rmsg");
+    if(err){msg.innerHTML='<div class="msg-err">❌ '+err.message+'</div>';}
+    else{msg.innerHTML='<div class="msg-ok">✅ Cleared! Now create admin above.</div>';showLogin();}
+  });
+}
+
+/* ===== INSTRUMENTS ===== */
+function showInst(){
+  setNav([]);
+  var sel=uinst().split("|").filter(function(x){return x;});
+  var h='<div class="card"><h2>🎸 Select Your Instruments</h2>';
+  INST.forEach(function(n){
+    h+='<span class="chip'+(sel.indexOf(n)>=0?" on":"")+'" onclick="tglInst(\''+n+'\')">'+n+'</span>';
+  });
+  h+='<button style="margin-top:20px" onclick="saveInst()">Continue</button></div>';
+  render(h);
+}
+function tglInst(n){
+  var sel=uinst().split("|").filter(function(x){return x;});
+  var i=sel.indexOf(n);i>=0?sel.splice(i,1):sel.push(n);
+  sessionStorage.setItem("inst",sel.join("|"));
+  showInst();
+}
+function saveInst(){
+  var sel=uinst().split("|").filter(function(x){return x;});
+  if(!sel.length){alert("Pick at least one");return;}
+  if(fbReady) ref.child("users/"+uid()).update({inst:sel});
+  tab="home";start();
+}
+
+/* ===== HOME ===== */
+function showHome(){
+  setNav(isAdmin()?adminTabs():memberTabs());
+  var role=urole();
+  var icon=role==="admin"?"👑":role==="co-admin"?"⭐":"👤";
+  render('<div class="card">'+
+    '<h2>'+icon+' Welcome, '+uname()+'!</h2>'+
+    '<p style="color:#999">'+uinst().replace(/\|/g,", ")+'</p>'+
+    '</div>');
+}
+
+/* ===== USER MANAGEMENT (Admin) ===== */
+function showManage(){
+  setNav(adminTabs());
+  render('<h2>👥 User Management</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+  
+  ref.child("users").once("value").then(function(snap){
+    var users=snap.val()||{};
+    var pending=[],approved=[];
+    for(var k in users){
+      var u=users[k]; u._id=k;
+      if(u.status==="pending") pending.push(u);
+      else if(u.status==="approved") approved.push(u);
+    }
+    
+    var h='<h2>👥 User Management</h2>';
+    
+    if(pending.length){
+      h+='<h3>⏳ Pending Requests ('+pending.length+')</h3>';
+      pending.forEach(function(u){
+        h+='<div class="card pending"><b>'+u.name+'</b>'+
+          '<div style="font-size:12px;margin:8px 0;color:#666">📧 '+u.email+'<br>📱 '+u.phone+'</div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+          '<button class="green" style="margin:0" onclick="approveUser(\''+u._id+'\',\''+u.name+'\')">✓ Approve</button>'+
+          '<button class="red" style="margin:0" onclick="rejectUser(\''+u._id+'\',\''+u.name+'\')">✗ Reject</button>'+
+          '</div></div>';
+      });
+    }else{
+      h+='<div class="card" style="color:#999">No pending requests</div>';
+    }
+    
+    if(approved.length){
+      h+='<h3>✓ Approved Members ('+approved.length+')</h3>';
+      approved.forEach(function(u){
+        var isCoA=u.role==="co-admin";
+        h+='<div class="card approved"><b>'+
+          (u.role==="admin"?"👑":isCoA?"⭐":"👤")+' '+u.name+'</b>'+
+          '<div style="font-size:12px;color:#666;margin:4px 0">'+
+          (u.inst&&u.inst.length?u.inst.join(", "):"No instruments")+'</div>';
+        if(u.role!=="admin"){
+          h+=isCoA?
+            '<button class="sec" style="margin-top:8px" onclick="demote(\''+u._id+'\',\''+u.name+'\')">⬇ Remove Co-Admin</button>':
+            '<button class="sec" style="margin-top:8px" onclick="promote(\''+u._id+'\',\''+u.name+'\')">⭐ Make Co-Admin</button>';
+        }
+        h+='</div>';
+      });
+    }
+    
+    render(h);
+  });
+}
+function approveUser(id,name){
+  ref.child("users/"+id).update({status:"approved"}).then(function(){
+    alert("✅ "+name+" approved!");
+    showManage();
+  });
+}
+function rejectUser(id,name){
+  if(!confirm("Reject "+name+"?")) return;
+  ref.child("users/"+id).update({status:"rejected"}).then(function(){
+    showManage();
+  });
+}
+function promote(id,name){
+  ref.child("users/"+id).update({role:"co-admin"}).then(function(){
+    alert("⭐ "+name+" is now Co-Admin!");
+    showManage();
+  });
+}
+function demote(id,name){
+  ref.child("users/"+id).update({role:"member"}).then(function(){
+    alert(name+" is now Member");
+    showManage();
+  });
+}
+
+/* ===== PLAN (Admin) ===== */
+function showPlan(){
+  setNav(adminTabs());
+  var h='<div class="card"><h2>Plan Service</h2>'+
+    '<label>Type</label><select id="st"><option>Sunday</option><option>Practice</option><option>Friday Prayer</option><option>Special</option></select>'+
+    '<label>Date</label><input type="date" id="sd">'+
+    '<label>Time</label><input type="time" id="sm" value="10:00">'+
+    '<button onclick="addSvc()">Add Service</button></div>';
+  
+  if(!fbReady){render(h);return;}
+  
+  ref.child("services").once("value").then(function(snap){
+    var svcs=snap.val()||{};
+    var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
+    keys.forEach(function(k){
+      var s=svcs[k];
+      h+='<div class="card"><b>'+s.name+'</b> &nbsp;<small style="color:#999">'+s.date+' '+s.time+'</small>'+
+        '<button class="sec" style="margin-top:8px" onclick="editSvc(\''+k+'\')">Assign Team</button></div>';
+    });
+    render(h);
+  });
+}
+function addSvc(){
+  var d=document.getElementById("sd").value;
+  if(!d){alert("Pick a date");return;}
+  var id="s_"+Math.random().toString(36).substr(2,9);
+  ref.child("services/"+id).set({
+    name:document.getElementById("st").value,
+    date:d,time:document.getElementById("sm").value,slots:{}
+  }).then(showPlan);
+}
+function editSvc(id){
+  setNav(adminTabs());
+  render('<div class="card">Loading...</div>');
+  
+  ref.child("services/"+id).once("value").then(function(ss){
+    var s=ss.val(); if(!s) return showPlan();
+    
+    ref.child("users").once("value").then(function(us){
+      var users={};
+      var ud=us.val()||{};
+      for(var k in ud){if(ud[k].status==="approved") users[k]=ud[k];}
+      
+      var h='<div class="card"><h2>'+s.name+'</h2><small style="color:#999">'+s.date+' at '+s.time+'</small>';
+      
+      INST.forEach(function(ins){
+        var assigned=s.slots&&s.slots[ins]?s.slots[ins]:{};
+        h+='<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:6px">'+
+          '<label style="margin:0"><b>'+ins+'</b></label>';
         
-        if (role === "admin") {
-          alert("✅ Admin Account Created!\n\n👑 You are now the Admin\n\nPlease sign in below to continue.");
-        } else {
-          alert("✓ Member account created!\nWaiting for admin approval.");
+        for(var uid in assigned){
+          if(users[uid]){
+            h+='<div style="background:var(--accent);color:#fff;padding:8px;margin:4px 0;display:flex;justify-content:space-between;align-items:center;border-radius:4px;font-size:13px">'+
+              '<span>✓ '+users[uid].name+'</span>'+
+              '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" '+
+              'onclick="delAssign(\''+id+'\',\''+ins+'\',\''+uid+'\')">Remove</button></div>';
+          }
+        }
+        
+        h+='<select onchange="addAssign(\''+id+'\',\''+ins+'\',this.value);this.value=\'\'">'+
+          '<option value="">+ Add '+ins+'...</option>';
+        for(var k in users){
+          var u=users[k];
+          if(u.inst&&u.inst.indexOf(ins)>=0&&!(assigned&&assigned[k])){
+            h+='<option value="'+k+'">'+u.name+'</option>';
+          }
+        }
+        h+='</select></div>';
+      });
+      
+      h+='<button class="sec" style="margin-top:20px" onclick="showPlan()">← Back to Services</button></div>';
+      render(h);
+    });
+  });
+}
+function addAssign(sid,ins,uid){
+  if(!uid) return;
+  ref.child("services/"+sid+"/slots/"+ins+"/"+uid).set(true).then(function(){
+    setTimeout(function(){editSvc(sid);},300);
+  });
+}
+function delAssign(sid,ins,uid){
+  ref.child("services/"+sid+"/slots/"+ins+"/"+uid).remove().then(function(){
+    editSvc(sid);
+  });
+}
+
+/* ===== SONGS ===== */
+function showSongs(){
+  setNav(isAdmin()?adminTabs():memberTabs());
+  var h='<h2>Song Library</h2>';
+  
+  if(isAdmin()){
+    h+='<div class="card"><h3>Add Song</h3>'+
+      '<input id="st" placeholder="Song Title">'+
+      '<label>Key</label><select id="sk">'+KEYS.map(function(k){return'<option>'+k+'</option>';}).join("")+'</select>'+
+      '<input id="snt" placeholder="Notes / Tempo">'+
+      '<textarea id="sly" rows="3" placeholder="Lyrics..."></textarea>'+
+      '<button onclick="addSong()">Add Song</button></div>';
+  }
+  
+  if(!fbReady){render(h);return;}
+  
+  ref.child("songs").once("value").then(function(snap){
+    var songs=snap.val()||{};
+    if(!Object.keys(songs).length){h+='<div class="card" style="text-align:center;color:#999">No songs yet</div>';}
+    for(var k in songs){
+      var sg=songs[k];
+      h+='<div class="song"><b>'+sg.title+'</b>'+
+        '<small style="color:#999">Key: '+sg.key+(sg.notes?' · '+sg.notes:'')+'</small>';
+      if(sg.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent)">Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto">'+sg.lyrics+'</pre></details>';
+      if(isAdmin()) h+='<button class="sec" style="margin-top:8px;font-size:12px" onclick="delSong(\''+k+'\')">Delete</button>';
+      h+='</div>';
+    }
+    render(h);
+  });
+}
+function addSong(){
+  var t=(document.getElementById("st").value||"").trim();
+  if(!t){alert("Enter title");return;}
+  ref.child("songs/sg_"+Math.random().toString(36).substr(2,9)).set({
+    title:t,key:document.getElementById("sk").value,
+    notes:document.getElementById("snt").value,lyrics:document.getElementById("sly").value
+  }).then(showSongs);
+}
+function delSong(id){
+  ref.child("songs/"+id).remove().then(showSongs);
+}
+
+/* ===== MY SERVICES (Member) ===== */
+function showMy(){
+  setNav(memberTabs());
+  render('<h2>Your Services</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+  
+  var me=uid();
+  ref.child("services").once("value").then(function(snap){
+    var svcs=snap.val()||{};
+    var h='<h2>Your Services</h2>';
+    var found=false;
+    
+    var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
+    keys.forEach(function(k){
+      var s=svcs[k];
+      if(!s.slots) return;
+      for(var ins in s.slots){
+        if(s.slots[ins]&&s.slots[ins][me]){
+          found=true;
+          h+='<div class="card"><b>'+s.name+'</b><br><small style="color:#999">'+s.date+' '+s.time+'</small><br>'+
+            '<small style="background:var(--accent);color:#fff;padding:2px 8px;border-radius:10px">'+ins+'</small></div>';
         }
       }
     });
-    
-  }).catch(function(e) {
-    log("❌ Error checking users: " + e.message);
-    showMsg("signup-msg", "❌ Error: " + e.message, "error");
+    if(!found) h='<h2>Your Services</h2><div class="card" style="text-align:center;color:#999">No services assigned yet</div>';
+    render(h);
   });
 }
 
-function resetDatabase() {
-  if (!confirm("⚠️ This will delete ALL users from the database.\n\nAre you sure? You'll need to create your admin account again.")) {
-    return;
-  }
+/* ===== AVAILABILITY (Member) ===== */
+function showAvail(){
+  setNav(memberTabs());
+  if(!fbReady){render('<div class="card">Loading...</div>');return;}
   
-  if (!firebaseReady) {
-    return showMsg("reset-msg", "❌ Firebase not ready", "error");
-  }
-  
-  showMsg("reset-msg", "⏳ Clearing database...", "info");
-  log("Deleting all users from database...");
-  
-  refDB.child("users").remove(function(error) {
-    if (error) {
-      log("❌ Error deleting users: " + error.message);
-      showMsg("reset-msg", "❌ Error: " + error.message, "error");
-    } else {
-      log("✓ Database cleared successfully!");
-      showMsg("reset-msg", "✅ Database cleared! Now create your admin account above.", "success");
-      alert("✅ Database cleared!\n\nNow create your admin account in the form above.");
-    }
+  ref.child("users/"+uid()+"/off").once("value").then(function(snap){
+    selDays=snap.val()||{};
+    renderCal();
   });
 }
-
-
-function signin() {
-  var nm = document.getElementById("nm2").value.trim();
-  var pw = document.getElementById("pw2").value;
+function renderCal(){
+  var today=new Date(), year=today.getFullYear();
+  var MN=["January","February","March","April","May","June","July","August","September","October","November","December"];
+  var h='<h2>Off Days</h2><p style="color:#999;font-size:12px">Tap dates to mark unavailable</p>';
   
-  log("SIGNIN: name=" + nm + ", pw_len=" + pw.length);
-  
-  if (!nm) return showMsg("signin-msg", "❌ Enter your name", "error");
-  if (!pw) return showMsg("signin-msg", "❌ Enter your password", "error");
-  
-  if (!firebaseReady) {
-    return showMsg("signin-msg", "⏳ Firebase not ready yet. Wait a moment.", "error");
-  }
-  
-  showMsg("signin-msg", "⏳ Signing in...", "info");
-  
-  refDB.child("users").once("value").then(function(snap) {
-    var allUsers = snap.val();
-    log("Checking " + (allUsers ? Object.keys(allUsers).length : 0) + " users");
-    
-    if (!allUsers) {
-      return showMsg("signin-msg", "❌ No accounts found. Create one first.", "error");
+  for(var yr=year;yr<=year+1;yr++){
+    h+='<h3 style="text-align:center">'+yr+'</h3>';
+    for(var m=0;m<12;m++){
+      var dim=new Date(yr,m+1,0).getDate(), fd=new Date(yr,m,1).getDay();
+      h+='<div style="margin-bottom:16px"><div style="font-weight:bold;font-size:13px;margin-bottom:4px">'+MN[m]+'</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
+      ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(function(d){
+        h+='<div style="text-align:center;font-size:10px;font-weight:bold;color:#999">'+d+'</div>';
+      });
+      for(var e=0;e<fd;e++) h+='<div></div>';
+      for(var day=1;day<=dim;day++){
+        var ds=yr+'-'+String(m+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+        var isSel=!!selDays[ds];
+        var isToday=(yr===today.getFullYear()&&m===today.getMonth()&&day===today.getDate());
+        var style='cursor:pointer;padding:4px;text-align:center;border-radius:4px;border:'+
+          (isToday?'2px solid var(--accent)':'1px solid var(--line)')+
+          ';background:'+(isSel?'var(--accent)':'var(--bg)')+
+          ';color:'+(isSel?'#fff':'var(--ink)');
+        h+='<div style="'+style+'" onclick="tglDay(\''+ds+'\')">'+day+'</div>';
+      }
+      h+='</div></div>';
     }
-    
-    var foundUser = null;
-    var foundKey = null;
-    
-    for (var key in allUsers) {
-      if (allUsers[key].name === nm) {
-        foundUser = allUsers[key];
-        foundKey = key;
-        log("Found user: " + key);
-        break;
+  }
+  h+='<button onclick="saveOff()">Save Off Days</button>'+
+    '<button class="sec" onclick="clearOff()" style="margin-top:4px">Clear All</button>';
+  render(h);
+}
+function tglDay(ds){selDays[ds]?delete selDays[ds]:(selDays[ds]=true);renderCal();}
+function saveOff(){
+  ref.child("users/"+uid()+"/off").set(selDays).then(function(){alert("Saved!");showAvail();});
+}
+function clearOff(){
+  if(confirm("Clear all off days?")){ selDays={}; renderCal(); }
+}
+
+/* ===== CHAT ===== */
+function showChat(){
+  setNav(isAdmin()?adminTabs():memberTabs());
+  render('<div class="card"><h2>Team Chat</h2>'+
+    '<div id="chatbox" style="border:1px solid var(--line);height:220px;overflow-y:auto;padding:10px;background:var(--bg);border-radius:6px;margin-bottom:10px">Loading...</div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<input id="cmsg" placeholder="Message..." style="margin:0;flex:1">'+
+    '<button onclick="sendMsg()" style="width:80px;margin:0">Send</button></div></div>');
+  
+  if(!fbReady) return;
+  
+  ref.child("messages").orderByChild("time").limitToLast(50).on("value",function(snap){
+    var box=document.getElementById("chatbox");
+    if(!box) return;
+    var msgs=[];
+    if(snap.val()){for(var k in snap.val()) msgs.push(snap.val()[k]);}
+    box.innerHTML=msgs.map(function(m){
+      return '<div class="msg"><b>'+m.name+'</b> <span style="color:#999;font-size:10px">'+
+        new Date(m.time).toLocaleTimeString()+'</span><br>'+m.text+'</div>';
+    }).join("");
+    box.scrollTop=box.scrollHeight;
+  });
+}
+function sendMsg(){
+  var tx=(document.getElementById("cmsg").value||"").trim();
+  if(!tx||!fbReady) return;
+  ref.child("messages").push({name:uname(),text:tx,time:Date.now()});
+  document.getElementById("cmsg").value="";
+}
+
+/* ===== TEAM ===== */
+function showTeam(){
+  setNav(isAdmin()?adminTabs():memberTabs());
+  render('<h2>Team Members</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+  
+  ref.child("users").once("value").then(function(snap){
+    var users=snap.val()||{};
+    var h='<h2>Team Members</h2>';
+    var found=false;
+    for(var k in users){
+      var u=users[k];
+      if(u.status==="approved"){
+        found=true;
+        var icon=u.role==="admin"?"👑":u.role==="co-admin"?"⭐":"👤";
+        h+='<div class="card"><b>'+icon+' '+u.name+'</b><br>'+
+          '<small style="color:#999">'+(u.inst&&u.inst.length?u.inst.join(", "):"—")+'</small></div>';
       }
     }
-    
-    if (!foundUser) {
-      return showMsg("signin-msg", "❌ Name not found", "error");
-    }
-    
-    if (foundUser.pass !== pw) {
-      return showMsg("signin-msg", "❌ Password incorrect", "error");
-    }
-    
-    if (foundUser.status === "pending") {
-      return showMsg("signin-msg", "⏳ Account pending admin approval", "error");
-    }
-    
-    log("✓ Login successful!");
-    sessionStorage.setItem("uid", foundKey);
-    sessionStorage.setItem("name", foundUser.name);
-    sessionStorage.setItem("role", foundUser.role);
-    sessionStorage.setItem("inst", foundUser.inst && foundUser.inst.length ? foundUser.inst.join("|") : "");
-    
-    show();
-    
-  }).catch(function(e) {
-    log("❌ Error: " + e.message);
-    showMsg("signin-msg", "❌ Error: " + e.message, "error");
+    if(!found) h='<h2>Team Members</h2><div class="card" style="text-align:center;color:#999">No members yet</div>';
+    render(h);
   });
 }
 
-function showMsg(elemId, msg, type) {
-  var elem = document.getElementById(elemId);
-  if (!elem) return;
-  
-  var cls = type === "error" ? "error-box" : (type === "success" ? "success-box" : "info-box");
-  elem.innerHTML = '<div class="' + cls + '">' + msg + '</div>';
-}
-
-function logout() {
-  sessionStorage.clear();
-  show();
-}
-
-function inst() {
-  var h = '<div class="card"><h2>Pick Your Instruments</h2>';
-  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|").filter(function(x) { return x; }) : [];
-  
-  for (var i = 0; i < INST.length; i++) {
-    var sel = selected.indexOf(INST[i]) >= 0 ? " on" : "";
-    h += '<span class="chip' + sel + '" onclick="tglInst(\'' + INST[i] + '\')">' + INST[i] + '</span>';
-  }
-  h += '<button style="margin-top: 20px" onclick="doneInst()">Done</button></div>';
-  
-  nav([]);
-  render(h);
-}
-
-function tglInst(n) {
-  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|").filter(function(x) { return x; }) : [];
-  var idx = selected.indexOf(n);
-  idx >= 0 ? selected.splice(idx, 1) : selected.push(n);
-  sessionStorage.setItem("inst", selected.join("|"));
-  inst();
-}
-
-function doneInst() {
-  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|").filter(function(x) { return x; }) : [];
-  if (!selected.length) return alert("Select at least one instrument");
-  
-  var uid = sessionStorage.getItem("uid");
-  if (firebaseReady) {
-    refDB.child("users/" + uid).update({ inst: selected });
-  }
-  tab = "dash";
-  show();
-}
-
-function dash() {
-  var role = sessionStorage.getItem("role");
-  var tabs = role === "admin" || role === "co-admin"
-    ? [["dash", "Home"], ["manage", "👥 Users"], ["plan", "Plan"], ["logout", "Logout"]]
-    : [["dash", "Home"], ["my", "Services"], ["logout", "Logout"]];
-  
-  if (tab === "logout") {
-    logout();
-    return;
-  }
-  
-  var h = '<div class="card"><h2>Welcome, ' + sessionStorage.getItem("name") + '!</h2>' +
-    '<p style="color: #999">' + (sessionStorage.getItem("inst") || "no instruments") + '</p></div>';
-  
-  nav(tabs);
-  render(h);
-}
-
-function manage() {
-  var tabs = [["dash", "Home"], ["manage", "👥 Users"], ["plan", "Plan"], ["logout", "Logout"]];
-  var h = '<h2>👥 User Management</h2><div class="card">No pending approvals</div>';
-  nav(tabs);
-  render(h);
-}
-
-function plan() {
-  var tabs = [["dash", "Home"], ["manage", "👥 Users"], ["plan", "Plan"], ["logout", "Logout"]];
-  var h = '<h2>Plan Services</h2><div class="card">Service planning coming soon</div>';
-  nav(tabs);
-  render(h);
-}
-
-function my() {
-  var tabs = [["dash", "Home"], ["my", "Services"], ["logout", "Logout"]];
-  var h = '<h2>Your Services</h2><div class="card">No services assigned yet</div>';
-  nav(tabs);
-  render(h);
-}
-
-function avail() {
-  var tabs = [["dash", "Home"], ["my", "Services"], ["logout", "Logout"]];
-  var h = '<h2>Availability</h2><div class="card">Coming soon</div>';
-  nav(tabs);
-  render(h);
-}
-
-function chat() {
-  var tabs = [["dash", "Home"], ["logout", "Logout"]];
-  var h = '<h2>Chat</h2><div class="card">Coming soon</div>';
-  nav(tabs);
-  render(h);
-}
-
-function team() {
-  var tabs = [["dash", "Home"], ["logout", "Logout"]];
-  var h = '<h2>Team Members</h2><div class="card">No members yet</div>';
-  nav(tabs);
-  render(h);
-}
-
-function songs() {
-  var tabs = [["dash", "Home"], ["logout", "Logout"]];
-  var h = '<h2>Songs</h2><div class="card">Coming soon</div>';
-  nav(tabs);
-  render(h);
-}
-
-show();
+start();
 </script>
 </body>
 </html>
