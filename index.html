@@ -12,11 +12,13 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 15px system-ui
 header { background: var(--card); padding: 12px; border-bottom: 1px solid var(--line); }
 h1 { margin: 0; font-size: 18px; }
 h2 { margin: 10px 0; font-size: 16px; }
+h3 { margin: 12px 0 8px 0; font-size: 14px; }
 main { max-width: 800px; margin: 0 auto; padding: 16px; }
 .card { background: var(--card); border: 1px solid var(--line); padding: 14px; margin: 12px 0; border-radius: 8px; }
 input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
 button { background: var(--accent); color: #fff; border: 0; padding: 10px; border-radius: 6px; cursor: pointer; margin: 4px 0; width: 100%; }
 button.sec { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+button.danger { background: #c23b22; }
 label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 13px; color: #999; }
 .chip { display: inline-block; padding: 6px 12px; border: 1px solid var(--line); border-radius: 20px; margin: 4px; cursor: pointer; background: var(--bg); font-size: 13px; }
 .chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -29,8 +31,13 @@ nav button { margin: 0; padding: 8px 12px; width: auto; font-size: 13px; }
 details { margin: 8px 0; }
 summary { cursor: pointer; color: var(--accent); }
 .status { font-size: 11px; color: #999; margin-top: 4px; }
-.pending { background: #fff3cd; color: #856404; padding: 10px; border-radius: 6px; margin: 8px 0; }
-.approved { background: #d4edda; color: #155724; padding: 10px; border-radius: 6px; margin: 8px 0; }
+.pending { background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #ff9800; }
+.approved { background: #d4edda; color: #155724; padding: 12px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #28a745; }
+.user-card { background: var(--bg); padding: 12px; margin: 8px 0; border-radius: 6px; border: 1px solid var(--line); }
+.user-card b { display: block; margin-bottom: 6px; }
+.user-card small { color: #999; display: block; margin: 4px 0; font-size: 12px; }
+.user-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.user-actions button { margin: 0; padding: 8px; font-size: 12px; width: 100%; }
 </style>
 </head>
 <body>
@@ -38,9 +45,13 @@ summary { cursor: pointer; color: var(--accent); }
 <header>
   <h1>🎵 Worship Scheduler</h1>
   <div id="user-info" style="font-size: 12px; color: #999; margin-top: 4px;"></div>
-  <div class="status" id="sync-text">Initializing...</div>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+    <div class="status" id="sync-text">Initializing...</div>
+    <button id="notif-bell" style="position: relative; width: auto; background: transparent; border: none; font-size: 18px; padding: 0; margin: 0; cursor: pointer; display: none" onclick="showNotifications()">
+      🔔 <span id="notif-badge" style="position: absolute; top: -5px; right: -8px; background: #c23b22; color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 11px; display: flex; align-items: center; justify-content: center; font-weight: bold">0</span>
+    </button>
+  </div>
 </header>
-
 <nav id="nav"></nav>
 
 <main id="main"></main>
@@ -67,6 +78,10 @@ const firebaseConfig = {
   appId: "1:868888139963:web:2d933464a111b2b17c319e"
 };
 
+function log(msg) {
+  console.log("[Worship] " + msg);
+}
+
 function initFirebase() {
   try {
     if (!firebase.apps.length) {
@@ -75,6 +90,7 @@ function initFirebase() {
     db = firebase.database();
     refDB = db.ref("worship");
     firebaseReady = true;
+    log("Firebase initialized");
     
     db.ref(".info/connected").on("value", function(snap) {
       if (snap.val() === true) {
@@ -86,7 +102,7 @@ function initFirebase() {
     
     show();
   } catch (e) {
-    console.error("Firebase error:", e);
+    log("Firebase error: " + e.message);
     document.getElementById("sync-text").textContent = "✗ Error: " + e.message;
   }
 }
@@ -94,12 +110,12 @@ function initFirebase() {
 var checkCount = 0;
 var firebaseCheck = setInterval(function() {
   checkCount++;
-  if (typeof firebase !== 'undefined') {
+  if (typeof firebase !== 'undefined' && firebase.initializeApp) {
     clearInterval(firebaseCheck);
     initFirebase();
-  } else if (checkCount > 20) {
+  } else if (checkCount > 40) {
     clearInterval(firebaseCheck);
-    document.getElementById("sync-text").textContent = "✗ Firebase not loading";
+    document.getElementById("sync-text").textContent = "✗ Firebase timeout";
     show();
   }
 }, 500);
@@ -123,7 +139,9 @@ function nav(tabs) {
 function render(h) {
   document.getElementById("main").innerHTML = h;
   if (sessionStorage.getItem("name")) {
-    document.getElementById("user-info").textContent = sessionStorage.getItem("name") + " | " + sessionStorage.getItem("role");
+    var role = sessionStorage.getItem("role");
+    var roleLabel = role === "admin" ? "👑 Admin" : (role === "co-admin" ? "⭐ Co-Admin" : "👤 Member");
+    document.getElementById("user-info").textContent = sessionStorage.getItem("name") + " | " + roleLabel;
   }
 }
 
@@ -135,108 +153,157 @@ function show() {
   } else if (!sessionStorage.getItem("inst")) {
     inst();
   } else {
+    loadNotifications();
     if (tab === "dash") dash();
+    else if (tab === "notif") showNotifications();
+    else if (tab === "manage") manage();
     else if (tab === "plan") plan();
     else if (tab === "songs") songs();
     else if (tab === "my") my();
     else if (tab === "avail") avail();
     else if (tab === "chat") chat();
     else if (tab === "team") team();
-    else if (tab === "pending") pending();
     else dash();
   }
 }
 
 function login() {
-  var h = '<div class="card"><h2>Worship Scheduler</h2>' +
-    '<p style="color: #999; margin-bottom: 20px">Sign in or create an account</p>' +
+  var status = firebaseReady ? "✓ Connected" : "⏳ Connecting...";
+  
+  var h = '<div class="card">' +
+    '<h2>🎵 Worship Scheduler</h2>' +
+    '<div style="font-size: 12px; color: #999; margin-bottom: 16px; padding: 8px; background: var(--bg); border-radius: 4px">' +
+    'Firebase: ' + status +
+    '</div>' +
     
-    '<details open style="margin-bottom: 20px"><summary style="cursor: pointer; color: var(--accent); font-weight: bold">📝 NEW ACCOUNT</summary>' +
-    '<div style="margin-top: 12px">' +
-    '<input type="text" id="nm" placeholder="Full Name">' +
+    '<div style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line)">' +
+    '<h3 style="margin-top: 0">📝 CREATE ACCOUNT</h3>' +
+    '<div id="create-form">' +
+    '<input type="text" id="nm" placeholder="Full Name" style="margin-top: 0">' +
     '<input type="email" id="em" placeholder="Email Address">' +
-    '<input type="tel" id="ph" placeholder="Phone Number (e.g. +1234567890)">' +
+    '<input type="tel" id="ph" placeholder="Phone Number">' +
     '<input type="password" id="pw" placeholder="Password (4+ chars)">' +
-    '<label>Role</label>' +
-    '<select id="rl"><option value="member">Team Member</option><option value="admin">Admin</option></select>' +
-    '<p style="color: #999; font-size: 12px">💡 First account auto-approves. Others await admin approval.</p>' +
-    '<button onclick="signup()">Create Account</button>' +
-    '</div></details>' +
+    '<div id="role-selector"></div>' +
+    '<button onclick="signup()" style="background: var(--accent)">Create Account</button>' +
+    '</div>' +
+    '</div>' +
     
-    '<details style="margin-bottom: 20px"><summary style="cursor: pointer; color: var(--accent); font-weight: bold">🔑 SIGN IN</summary>' +
-    '<div style="margin-top: 12px">' +
-    '<input type="text" id="nm2" placeholder="Your Name">' +
+    '<div>' +
+    '<h3 style="margin-top: 0">🔑 SIGN IN</h3>' +
+    '<input type="text" id="nm2" placeholder="Your Name" style="margin-top: 0">' +
     '<input type="password" id="pw2" placeholder="Password">' +
-    '<button class="sec" onclick="signin()">Sign In</button>' +
-    '</div></details>' +
+    '<button class="sec" onclick="signin()" style="border: 2px solid var(--accent); color: var(--accent)">Sign In</button>' +
+    '</div>' +
     '</div>';
+  
   nav([]);
   render(h);
+  
+  // Check if admin exists to determine what role selector to show
+  if (firebaseReady) {
+    refDB.child("users").once("value").then(function(snap) {
+      var hasAdmin = false;
+      snap.forEach(function(child) {
+        var u = child.val();
+        if (u.role === "admin" || u.role === "co-admin") {
+          hasAdmin = true;
+        }
+      });
+      
+      var roleHtml = '';
+      if (!hasAdmin) {
+        roleHtml = '<p style="color: #999; font-size: 12px; margin-bottom: 12px">👑 First account will be Admin</p>';
+      } else {
+        roleHtml = '<label>Role</label><select id="rl" style="margin-bottom: 12px"><option value="member">Team Member (needs approval)</option></select><p style="color: #999; font-size: 11px">Your request will need Admin approval</p>';
+      }
+      
+      document.getElementById("role-selector").innerHTML = roleHtml;
+    });
+  }
 }
 
 function signup() {
-  if (!firebaseReady) return alert("Firebase not ready");
   var nm = document.getElementById("nm").value.trim();
   var em = document.getElementById("em").value.trim();
   var ph = document.getElementById("ph").value.trim();
   var pw = document.getElementById("pw").value;
-  var rl = document.getElementById("rl").value;
-  if (!nm || !em || !ph || pw.length < 4) return alert("Please fill all fields");
+  
+  if (!nm || !em || !ph || pw.length < 4) {
+    alert("❌ Please fill all fields (password 4+ chars)");
+    return;
+  }
+  
+  if (!firebaseReady) {
+    alert("❌ Firebase not ready yet.\n\nWait a moment and try again.");
+    return;
+  }
   
   var uid = "u_" + Math.random().toString().substr(2, 9);
   
-  // Check if this is the first user (auto-approve)
   refDB.child("users").once("value").then(function(snap) {
-    var userCount = snap.val() ? Object.keys(snap.val()).length : 0;
-    var isFirstUser = userCount === 0;
-    var status = isFirstUser ? "approved" : "pending";
+    var hasAdmin = false;
+    snap.forEach(function(child) {
+      var u = child.val();
+      if (u.role === "admin" || u.role === "co-admin") {
+        hasAdmin = true;
+      }
+    });
     
-    refDB.child("users/" + uid).set({
+    var role = hasAdmin ? "member" : "admin";
+    var status = hasAdmin ? "pending" : "approved";
+    
+    var userData = {
       name: nm,
       email: em,
       phone: ph,
       pass: pw,
-      role: rl,
+      role: role,
+      status: status,
       inst: [],
       off: {},
-      status: status,
       createdAt: new Date().getTime()
-    }).then(function() {
-      if (isFirstUser) {
-        alert("✓ First account created and approved!\n\nSign in now with your name and password.");
-        sessionStorage.setItem("uid", uid);
-        sessionStorage.setItem("name", nm);
-        sessionStorage.setItem("role", rl);
-        sessionStorage.setItem("inst", "");
-        show();
+    };
+    
+    refDB.child("users").child(uid).set(userData, function(error) {
+      if (error) {
+        alert("❌ Error: " + error.message);
       } else {
-        alert("✓ Account created!\n\nWaiting for admin approval to access the app.");
+        if (hasAdmin) {
+          alert("✓ Account request submitted!\n\nAdmin will review and approve your request.");
+        } else {
+          alert("✓ First Admin account created!\n\nSign in now to get started.");
+        }
         login();
       }
-    }).catch(function(e) {
-      alert("Error creating account: " + e.message);
     });
-  }).catch(function(e) {
-    alert("Error: " + e.message);
   });
 }
 
 function signin() {
-  if (!firebaseReady) return alert("Firebase not ready");
   var nm = document.getElementById("nm2").value.trim();
   var pw = document.getElementById("pw2").value;
   
-  if (!nm || !pw) return alert("Enter name and password");
+  if (!nm || !pw) {
+    alert("❌ Enter your name and password");
+    return;
+  }
+  
+  if (!firebaseReady) {
+    alert("❌ Firebase not ready yet.\n\nWait a moment and try again.");
+    return;
+  }
   
   refDB.child("users").once("value").then(function(snap) {
     var allUsers = snap.val();
-    if (!allUsers) return alert("❌ No accounts found. Create one first.");
     
-    var loggedIn = false;
+    if (!allUsers) {
+      alert("❌ No accounts found.\n\nCreate an account first.");
+      return;
+    }
+    
     var foundUser = null;
     var foundKey = null;
     
-    // Find the user
     for (var key in allUsers) {
       var u = allUsers[key];
       if (u.name === nm) {
@@ -246,42 +313,142 @@ function signin() {
       }
     }
     
-    // Handle different scenarios
     if (!foundUser) {
-      alert("❌ Account not found.\n\nPlease check your name or create a new account.");
-    } else if (foundUser.pass !== pw) {
-      alert("❌ Password incorrect.\n\nPlease try again.");
-    } else if (foundUser.status === "pending") {
-      alert("⏳ Account Pending Approval\n\nAdmin is reviewing your request.\nYou'll be able to sign in once approved.");
-    } else if (foundUser.status === "rejected") {
-      alert("❌ Your account was rejected.\n\nPlease contact the admin.");
-    } else if (foundUser.status === "approved") {
-      sessionStorage.setItem("uid", foundKey);
-      sessionStorage.setItem("name", foundUser.name);
-      sessionStorage.setItem("role", foundUser.role);
-      if (foundUser.inst && foundUser.inst.length > 0) {
-        sessionStorage.setItem("inst", foundUser.inst.join("|"));
-      } else {
-        sessionStorage.setItem("inst", "");
-      }
-      show();
+      alert("❌ Account not found.\n\nPlease check the name or create a new account.");
       return;
-    } else {
-      alert("❌ Account status unknown: " + foundUser.status);
     }
+    
+    if (foundUser.pass !== pw) {
+      alert("❌ Password is incorrect.\n\nPlease try again.");
+      return;
+    }
+    
+    if (foundUser.status === "pending") {
+      alert("⏳ Your account is awaiting Admin approval.\n\nAn admin will review your request soon.");
+      return;
+    }
+    
+    if (foundUser.status === "rejected") {
+      alert("❌ Your account was rejected by Admin.\n\nPlease contact the admin.");
+      return;
+    }
+    
+    // Approved - log in
+    sessionStorage.setItem("uid", foundKey);
+    sessionStorage.setItem("name", foundUser.name);
+    sessionStorage.setItem("role", foundUser.role);
+    if (foundUser.inst && foundUser.inst.length > 0) {
+      sessionStorage.setItem("inst", foundUser.inst.join("|"));
+    } else {
+      sessionStorage.setItem("inst", "");
+    }
+    
+    // Check for approval notification
+    if (foundUser.notifications) {
+      var hasApprovalNotif = false;
+      for (var nkey in foundUser.notifications) {
+        if (foundUser.notifications[nkey].type === "approved" && !foundUser.notifications[nkey].read) {
+          hasApprovalNotif = true;
+          break;
+        }
+      }
+      if (hasApprovalNotif) {
+        alert("✅ Welcome! Your account has been approved by the admin.\n\nYou can now access all features!");
+      }
+    }
+    
+    show();
+    
   }).catch(function(e) {
-    alert("Error signing in: " + e.message);
+    alert("❌ Error signing in: " + e.message);
   });
 }
 
 function logout() {
+
+var notificationData = {};
+
+function loadNotifications() {
+  if (!firebaseReady) return;
+  var uid = sessionStorage.getItem("uid");
+  if (!uid) return;
+  
+  refDB.child("users/" + uid + "/notifications").on("value", function(snap) {
+    notificationData = snap.val() || {};
+    updateNotificationBadge();
+  });
+}
+
+function updateNotificationBadge() {
+  var unreadCount = 0;
+  for (var key in notificationData) {
+    if (notificationData[key] && !notificationData[key].read) {
+      unreadCount++;
+    }
+  }
+  
+  var bell = document.getElementById("notif-bell");
+  if (unreadCount > 0) {
+    bell.style.display = "block";
+    document.getElementById("notif-badge").textContent = unreadCount;
+  } else {
+    bell.style.display = "none";
+  }
+}
+
+function showNotifications() {
+  var uid = sessionStorage.getItem("uid");
+  var tabs = sessionStorage.getItem("role") === "admin" || sessionStorage.getItem("role") === "co-admin"
+    ? [["dash", "Home"], ["notif", "📬 Notifications"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    : [["dash", "Home"], ["notif", "📬 Notifications"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  
+  tab = "notif";
+  var h = '<h2>📬 Notifications</h2>';
+  
+  var hasNotif = false;
+  for (var key in notificationData) {
+    hasNotif = true;
+    var n = notificationData[key];
+    var bgColor = n.read ? "var(--bg)" : "#fff3cd";
+    var timestamp = new Date(n.timestamp).toLocaleString();
+    
+    h += '<div class="card" style="background: ' + bgColor + '">' +
+      '<div style="display: flex; justify-content: space-between; align-items: start">' +
+      '<div style="flex: 1">' +
+      '<b style="font-size: 13px">' + n.message + '</b>' +
+      '<small style="color: #999; display: block; margin-top: 6px">' + timestamp + '</small>' +
+      '</div>';
+    
+    if (!n.read) {
+      h += '<button class="sec" style="width: 60px; font-size: 11px; margin: 0; padding: 4px 8px" onclick="markNotifRead(\'' + key + '\')">Mark Read</button>';
+    }
+    
+    h += '</div></div>';
+  }
+  
+  if (!hasNotif) {
+    h += '<div class="card" style="text-align: center; color: #999; padding: 30px">No notifications</div>';
+  }
+  
+  render(h);
+  nav(tabs);
+}
+
+function markNotifRead(notifKey) {
+  var uid = sessionStorage.getItem("uid");
+  refDB.child("users/" + uid + "/notifications/" + notifKey).update({ read: true }).then(function() {
+    updateNotificationBadge();
+    showNotifications();
+  });
+}
+
   sessionStorage.clear();
   show();
 }
 
 function inst() {
-  var h = '<div class="card"><h2>Pick Instruments</h2>';
-  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|") : [];
+  var h = '<div class="card"><h2>Pick Your Instruments</h2><p style="color: #999; margin-bottom: 20px">Select all instruments you play</p>';
+  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|").filter(function(x) { return x; }) : [];
   
   for (var i = 0; i < INST.length; i++) {
     var n = INST[i];
@@ -294,7 +461,7 @@ function inst() {
 }
 
 function tglInst(n) {
-  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|") : [];
+  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|").filter(function(x) { return x; }) : [];
   var idx = selected.indexOf(n);
   if (idx >= 0) {
     selected.splice(idx, 1);
@@ -306,8 +473,8 @@ function tglInst(n) {
 }
 
 function doneInst() {
-  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|") : [];
-  if (!selected.length) return alert("Pick one");
+  var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|").filter(function(x) { return x; }) : [];
+  if (!selected.length) return alert("Pick at least one instrument");
   
   var uid = sessionStorage.getItem("uid");
   if (firebaseReady) {
@@ -319,16 +486,20 @@ function doneInst() {
 
 function dash() {
   var role = sessionStorage.getItem("role");
-  var tabs = role === "admin" 
-    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]]
-    : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  var tabs;
+  
+  if (role === "admin" || role === "co-admin") {
+    tabs = [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
+  } else {
+    tabs = [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  }
   
   if (tab === "logout") {
     logout();
     return;
   }
   
-  var h = '<div class="card"><h2>Hello, ' + sessionStorage.getItem("name") + '</h2>' +
+  var h = '<div class="card"><h2>Welcome, ' + sessionStorage.getItem("name") + '!</h2>' +
     '<p style="color: #999">' + (sessionStorage.getItem("inst") || "") + '</p>' +
     '</div>';
   
@@ -336,10 +507,15 @@ function dash() {
   render(h);
 }
 
-function pending() {
-  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]];
+function manage() {
+  var role = sessionStorage.getItem("role");
+  if (role !== "admin" && role !== "co-admin") {
+    return dash();
+  }
   
-  var h = '<h2>Pending User Approvals</h2>';
+  var tabs = [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
+  
+  var h = '<h2>👥 User Management</h2>';
   
   if (!firebaseReady) {
     h += '<div class="card" style="color: #999">Loading...</div>';
@@ -350,30 +526,56 @@ function pending() {
   
   refDB.child("users").once("value").then(function(snap) {
     var pendingUsers = [];
+    var approvedUsers = [];
+    
     snap.forEach(function(child) {
       var u = child.val();
       if (u.status === "pending") {
         pendingUsers.push({ uid: child.key, ...u });
+      } else if (u.status === "approved") {
+        approvedUsers.push({ uid: child.key, ...u });
       }
     });
     
-    if (pendingUsers.length === 0) {
-      h += '<div class="card" style="text-align: center; color: #999; padding: 30px">No pending approvals</div>';
-    } else {
+    if (pendingUsers.length > 0) {
+      h += '<h3>⏳ Pending Requests (' + pendingUsers.length + ')</h3>';
       for (var i = 0; i < pendingUsers.length; i++) {
         var u = pendingUsers[i];
-        h += '<div class="card pending">' +
+        h += '<div class="user-card pending">' +
           '<b>' + u.name + '</b>' +
-          '<div style="font-size: 12px; color: #666; margin: 8px 0">' +
-          '📧 ' + u.email + '<br>' +
-          '📱 ' + u.phone + '<br>' +
-          'Role: ' + u.role +
+          '<small>📧 ' + u.email + '</small>' +
+          '<small>📱 ' + u.phone + '</small>' +
+          '<div class="user-actions">' +
+          '<button onclick="approveUser(\'' + u.uid + '\', \'' + u.name + '\')" style="background: #28a745; margin: 0">✓ Approve</button>' +
+          '<button class="danger" onclick="rejectUser(\'' + u.uid + '\', \'' + u.name + '\')" style="margin: 0">✗ Reject</button>' +
           '</div>' +
-          '<button onclick="approveUser(\'' + u.uid + '\', \'' + u.name + '\')">✓ Approve</button>' +
-          '<button class="sec" onclick="rejectUser(\'' + u.uid + '\')">✗ Reject</button>' +
           '</div>';
       }
     }
+    
+    if (approvedUsers.length > 0) {
+      h += '<h3>✓ Approved Members (' + approvedUsers.length + ')</h3>';
+      for (var i = 0; i < approvedUsers.length; i++) {
+        var u = approvedUsers[i];
+        var isCoAdmin = u.role === "co-admin";
+        h += '<div class="user-card approved">' +
+          '<b>' + u.name + '</b>' +
+          '<small>Role: ' + (isCoAdmin ? '⭐ Co-Admin' : '👤 Member') + '</small>' +
+          '<small>' + (u.inst && u.inst.length ? u.inst.join(", ") : "No instruments") + '</small>' +
+          '<div class="user-actions">' +
+          (isCoAdmin ? 
+            '<button class="sec" onclick="demoteCoAdmin(\'' + u.uid + '\', \'' + u.name + '\')" style="margin: 0; grid-column: 1/3">⬇ Remove Co-Admin</button>' :
+            '<button class="sec" onclick="promoteCoAdmin(\'' + u.uid + '\', \'' + u.name + '\')" style="margin: 0; grid-column: 1/3">⭐ Make Co-Admin</button>'
+          ) +
+          '</div>' +
+          '</div>';
+      }
+    }
+    
+    if (pendingUsers.length === 0 && approvedUsers.length === 0) {
+      h = '<h2>👥 User Management</h2><div class="card" style="text-align: center; color: #999; padding: 30px">No users yet</div>';
+    }
+    
     render(h);
   });
   
@@ -383,23 +585,46 @@ function pending() {
 function approveUser(uid, name) {
   if (!firebaseReady) return;
   refDB.child("users/" + uid).update({ status: "approved" }).then(function() {
-    alert("✓ " + name + " approved!");
-    pending();
+    // Create notification for the user
+    var notifId = "notif_" + Math.random().toString().substr(2, 9);
+    refDB.child("users/" + uid + "/notifications/" + notifId).set({
+      type: "approved",
+      message: "Your account has been approved! You can now sign in.",
+      timestamp: new Date().getTime(),
+      read: false
+    });
+    alert("✓ " + name + " approved!\n📧 Notification sent to user");
+    manage();
   });
 }
 
-function rejectUser(uid) {
+function rejectUser(uid, name) {
+  if (!confirm("Reject " + name + "?")) return;
   if (!firebaseReady) return;
-  if (confirm("Reject this user?")) {
-    refDB.child("users/" + uid).remove().then(function() {
-      alert("User rejected");
-      pending();
-    });
-  }
+  refDB.child("users/" + uid).update({ status: "rejected" }).then(function() {
+    alert("User rejected");
+    manage();
+  });
+}
+
+function promoteCoAdmin(uid, name) {
+  if (!firebaseReady) return;
+  refDB.child("users/" + uid).update({ role: "co-admin" }).then(function() {
+    alert("⭐ " + name + " is now Co-Admin!");
+    manage();
+  });
+}
+
+function demoteCoAdmin(uid, name) {
+  if (!firebaseReady) return;
+  refDB.child("users/" + uid).update({ role: "member" }).then(function() {
+    alert("" + name + " is now a regular member");
+    manage();
+  });
 }
 
 function plan() {
-  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]];
+  var tabs = [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
   
   var h = '<div class="card"><h2>Plan Service</h2>' +
     '<label>Type</label>' +
@@ -449,7 +674,7 @@ function addSvc() {
 }
 
 function editSvc(id) {
-  var tabs = [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]];
+  var tabs = [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
   
   if (!firebaseReady) return plan();
   
@@ -533,13 +758,14 @@ function delAssign(sid, inst, uid) {
 }
 
 function songs() {
-  var tabs = sessionStorage.getItem("role") === "admin"
-    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]]
-    : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  var role = sessionStorage.getItem("role");
+  var tabs = (role === "admin" || role === "co-admin")
+    ? [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    : [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   
   var h = '<h2>Song Library</h2>';
   
-  if (sessionStorage.getItem("role") === "admin") {
+  if (role === "admin" || role === "co-admin") {
     h += '<div class="card"><h3>Add Song</h3>' +
       '<input type="text" id="sn" placeholder="Song title">' +
       '<label>Key</label>' +
@@ -570,7 +796,7 @@ function songs() {
         if (sg.lyrics) {
           h += '<details><summary>Lyrics</summary><pre style="font-size: 11px; white-space: pre-wrap; overflow-x: auto; max-height: 150px">' + sg.lyrics + '</pre></details>';
         }
-        if (sessionStorage.getItem("role") === "admin") {
+        if (role === "admin" || role === "co-admin") {
           h += '<button class="sec" style="margin-top: 8px; font-size: 12px" onclick="delSong(\'' + child.key + '\')">Delete</button>';
         }
         h += '</div>';
@@ -606,7 +832,7 @@ function delSong(id) {
 }
 
 function my() {
-  var tabs = [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  var tabs = [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   var uid = sessionStorage.getItem("uid");
   
   var h = '<h2>Your Services</h2>';
@@ -643,7 +869,7 @@ function my() {
 }
 
 function avail() {
-  var tabs = [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  var tabs = [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   var uid = sessionStorage.getItem("uid");
   
   if (!firebaseReady) {
@@ -760,9 +986,10 @@ function clearAllDays() {
 }
 
 function chat() {
-  var tabs = sessionStorage.getItem("role") === "admin"
-    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]]
-    : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  var role = sessionStorage.getItem("role");
+  var tabs = (role === "admin" || role === "co-admin")
+    ? [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    : [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   
   var h = '<div class="card"><h2>Team Chat</h2><div style="border: 1px solid var(--line); padding: 10px; height: 200px; overflow-y: auto; margin: 10px 0; background: var(--bg); border-radius: 6px">';
   
@@ -809,9 +1036,10 @@ function sendMsg() {
 }
 
 function team() {
-  var tabs = sessionStorage.getItem("role") === "admin"
-    ? [["dash", "Home"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["pending", "Approvals"], ["logout", "Logout"]]
-    : [["dash", "Home"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
+  var role = sessionStorage.getItem("role");
+  var tabs = (role === "admin" || role === "co-admin")
+    ? [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
+    : [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
   
   var h = '<h2>Team Members</h2>';
   
@@ -823,18 +1051,19 @@ function team() {
   }
   
   refDB.child("users").once("value").then(function(snap) {
-    var approvedCount = 0;
+    var userCount = 0;
     snap.forEach(function(child) {
       var u = child.val();
       if (u.status === "approved") {
-        approvedCount++;
-        h += '<div class="card"><b>' + u.name + '</b> ' + (u.role === 'admin' ? '<small style="color: #999">(Admin)</small>' : '') +
+        userCount++;
+        var roleIcon = u.role === "admin" ? "👑" : (u.role === "co-admin" ? "⭐" : "👤");
+        h += '<div class="card"><b>' + roleIcon + ' ' + u.name + '</b>' +
           '<br><small style="color: #999">' + (u.inst && u.inst.length ? u.inst.join(", ") : "—") + '</small></div>';
       }
     });
     
-    if (approvedCount === 0) {
-      h = '<h2>Team Members</h2><div class="card" style="text-align: center; color: #999; padding: 30px">No approved members yet</div>';
+    if (userCount === 0) {
+      h = '<h2>Team Members</h2><div class="card" style="text-align: center; color: #999; padding: 30px">No members yet</div>';
     }
     
     render(h);
