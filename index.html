@@ -173,6 +173,13 @@ function login() {
     '<button class="sec" onclick="signin()" style="border: 2px solid var(--accent); color: var(--accent)">Sign In</button>' +
     '<div id="signin-msg"></div>' +
     '</div>' +
+    
+    '<div style="border-top: 1px solid var(--line); margin: 20px 0; padding-top: 20px">' +
+    '<h3 style="margin-top: 0">🔧 Admin Setup</h3>' +
+    '<p style="color: #999; font-size: 12px; margin: 0 0 12px 0">If you see "Member account created" error but screen showed "First person", the database may have old data.</p>' +
+    '<button class="sec" onclick="resetDatabase()" style="background: #ffcdd2; color: #c62828; border: 1px solid #c62828">🗑️ Clear All Users & Start Fresh</button>' +
+    '<div id="reset-msg"></div>' +
+    '</div>' +
     '</div>';
   
   nav([]);
@@ -257,6 +264,31 @@ function signup() {
     showMsg("signup-msg", "❌ Error: " + e.message, "error");
   });
 }
+
+function resetDatabase() {
+  if (!confirm("⚠️ This will delete ALL users from the database.\n\nAre you sure? You'll need to create your admin account again.")) {
+    return;
+  }
+  
+  if (!firebaseReady) {
+    return showMsg("reset-msg", "❌ Firebase not ready", "error");
+  }
+  
+  showMsg("reset-msg", "⏳ Clearing database...", "info");
+  log("Deleting all users from database...");
+  
+  refDB.child("users").remove(function(error) {
+    if (error) {
+      log("❌ Error deleting users: " + error.message);
+      showMsg("reset-msg", "❌ Error: " + error.message, "error");
+    } else {
+      log("✓ Database cleared successfully!");
+      showMsg("reset-msg", "✅ Database cleared! Now create your admin account above.", "success");
+      alert("✅ Database cleared!\n\nNow create your admin account in the form above.");
+    }
+  });
+}
+
 
 function signin() {
   var nm = document.getElementById("nm2").value.trim();
