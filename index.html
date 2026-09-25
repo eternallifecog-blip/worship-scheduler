@@ -18,26 +18,15 @@ main { max-width: 800px; margin: 0 auto; padding: 16px; }
 input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
 button { background: var(--accent); color: #fff; border: 0; padding: 10px; border-radius: 6px; cursor: pointer; margin: 4px 0; width: 100%; }
 button.sec { background: transparent; color: var(--accent); border: 1px solid var(--line); }
-button.danger { background: #c23b22; }
 label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 13px; color: #999; }
 .chip { display: inline-block; padding: 6px 12px; border: 1px solid var(--line); border-radius: 20px; margin: 4px; cursor: pointer; background: var(--bg); font-size: 13px; }
 .chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 nav { padding: 8px; display: flex; gap: 4px; overflow-x: auto; background: var(--card); border-bottom: 1px solid var(--line); }
 nav button { margin: 0; padding: 8px 12px; width: auto; font-size: 13px; }
-.song { background: var(--bg); padding: 10px; margin: 8px 0; border-radius: 6px; }
-.song b { display: block; margin-bottom: 4px; }
-.song small { color: #999; display: block; margin: 4px 0; }
-.msg { background: var(--bg); padding: 8px; margin: 6px 0; border-radius: 4px; font-size: 12px; }
-details { margin: 8px 0; }
-summary { cursor: pointer; color: var(--accent); }
 .status { font-size: 11px; color: #999; margin-top: 4px; }
-.pending { background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #ff9800; }
-.approved { background: #d4edda; color: #155724; padding: 12px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #28a745; }
-.user-card { background: var(--bg); padding: 12px; margin: 8px 0; border-radius: 6px; border: 1px solid var(--line); }
-.user-card b { display: block; margin-bottom: 6px; }
-.user-card small { color: #999; display: block; margin: 4px 0; font-size: 12px; }
-.user-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
-.user-actions button { margin: 0; padding: 8px; font-size: 12px; width: 100%; }
+.error-box { background: #ffebee; color: #c62828; padding: 10px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #c62828; }
+.success-box { background: #e8f5e9; color: #2e7d32; padding: 10px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #2e7d32; }
+.info-box { background: #fff3e0; color: #e65100; padding: 10px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #ff9800; }
 </style>
 </head>
 <body>
@@ -45,15 +34,10 @@ summary { cursor: pointer; color: var(--accent); }
 <header>
   <h1>🎵 Worship Scheduler</h1>
   <div id="user-info" style="font-size: 12px; color: #999; margin-top: 4px;"></div>
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-    <div class="status" id="sync-text">Initializing...</div>
-    <button id="notif-bell" style="position: relative; width: auto; background: transparent; border: none; font-size: 18px; padding: 0; margin: 0; cursor: pointer; display: none" onclick="showNotifications()">
-      🔔 <span id="notif-badge" style="position: absolute; top: -5px; right: -8px; background: #c23b22; color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 11px; display: flex; align-items: center; justify-content: center; font-weight: bold">0</span>
-    </button>
-  </div>
+  <div class="status" id="sync-text">Initializing Firebase...</div>
 </header>
-<nav id="nav"></nav>
 
+<nav id="nav"></nav>
 <main id="main"></main>
 
 <script async defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -63,10 +47,8 @@ summary { cursor: pointer; color: var(--accent); }
 var db, refDB;
 var firebaseReady = false;
 var INST = ["Drums", "Vocals", "Bass Guitar", "Acoustic Guitar", "Piano"];
-var KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 var user = null;
 var tab = "dash";
-var selectedDays = {};
 
 const firebaseConfig = {
   apiKey: "AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
@@ -84,17 +66,20 @@ function log(msg) {
 
 function initFirebase() {
   try {
+    log("Attempting to initialize Firebase...");
     if (!firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
+      log("Firebase app initialized");
     }
     db = firebase.database();
     refDB = db.ref("worship");
     firebaseReady = true;
-    log("Firebase initialized");
+    log("✓ Firebase is ready!");
+    document.getElementById("sync-text").textContent = "✓ Firebase Connected";
     
     db.ref(".info/connected").on("value", function(snap) {
       if (snap.val() === true) {
-        document.getElementById("sync-text").textContent = "✓ Live sync connected";
+        document.getElementById("sync-text").textContent = "✓ Firebase Connected";
       } else {
         document.getElementById("sync-text").textContent = "✗ Offline";
       }
@@ -102,8 +87,8 @@ function initFirebase() {
     
     show();
   } catch (e) {
-    log("Firebase error: " + e.message);
-    document.getElementById("sync-text").textContent = "✗ Error: " + e.message;
+    log("❌ Firebase error: " + e.message);
+    document.getElementById("sync-text").textContent = "❌ Firebase Error: " + e.message;
   }
 }
 
@@ -112,17 +97,27 @@ var firebaseCheck = setInterval(function() {
   checkCount++;
   if (typeof firebase !== 'undefined' && firebase.initializeApp) {
     clearInterval(firebaseCheck);
+    log("Firebase library loaded, initializing...");
     initFirebase();
-  } else if (checkCount > 40) {
+  } else if (checkCount > 50) {
     clearInterval(firebaseCheck);
-    document.getElementById("sync-text").textContent = "✗ Firebase timeout";
+    log("❌ Firebase failed to load after 25 seconds");
+    document.getElementById("sync-text").textContent = "❌ Firebase Failed to Load";
     show();
   }
 }, 500);
 
 function getMe() {
-  var uid = sessionStorage.getItem("uid");
-  return uid ? { uid: uid } : null;
+  return sessionStorage.getItem("uid") ? { uid: sessionStorage.getItem("uid") } : null;
+}
+
+function render(h) {
+  document.getElementById("main").innerHTML = h;
+  if (sessionStorage.getItem("name")) {
+    var role = sessionStorage.getItem("role") || "?";
+    var roleIcon = role === "admin" ? "👑" : (role === "co-admin" ? "⭐" : "👤");
+    document.getElementById("user-info").textContent = roleIcon + " " + sessionStorage.getItem("name");
+  }
 }
 
 function nav(tabs) {
@@ -136,15 +131,6 @@ function nav(tabs) {
   document.getElementById("nav").innerHTML = h;
 }
 
-function render(h) {
-  document.getElementById("main").innerHTML = h;
-  if (sessionStorage.getItem("name")) {
-    var role = sessionStorage.getItem("role");
-    var roleLabel = role === "admin" ? "👑 Admin" : (role === "co-admin" ? "⭐ Co-Admin" : "👤 Member");
-    document.getElementById("user-info").textContent = sessionStorage.getItem("name") + " | " + roleLabel;
-  }
-}
-
 function show() {
   user = getMe();
   
@@ -153,9 +139,7 @@ function show() {
   } else if (!sessionStorage.getItem("inst")) {
     inst();
   } else {
-    loadNotifications();
     if (tab === "dash") dash();
-    else if (tab === "notif") showNotifications();
     else if (tab === "manage") manage();
     else if (tab === "plan") plan();
     else if (tab === "songs") songs();
@@ -168,63 +152,33 @@ function show() {
 }
 
 function login() {
-  var status = firebaseReady ? "✓ Connected" : "⏳ Connecting...";
-  
-  var h = '<div class="card">' +
+  var h = '<div class="card" style="max-width: 500px; margin: 0 auto">' +
     '<h2>🎵 Worship Scheduler</h2>' +
-    '<div style="font-size: 12px; color: #999; margin-bottom: 16px; padding: 8px; background: var(--bg); border-radius: 4px">' +
-    'Firebase: ' + status +
-    '</div>' +
     
-    '<div id="signup-section" style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line)">' +
-    '<h3 style="margin-top: 0">📝 CREATE ACCOUNT</h3>' +
-    '<div id="status-message" style="background: var(--bg); padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 12px; color: #666"></div>' +
+    '<div style="margin: 20px 0">' +
+    '<h3 style="margin-top: 0; color: #28a745">📝 Create Admin Account</h3>' +
+    '<div class="info-box"><b>First person to sign up becomes Admin</b></div>' +
     '<input type="text" id="nm" placeholder="Full Name" style="margin-top: 0">' +
-    '<input type="email" id="em" placeholder="Email Address">' +
-    '<input type="tel" id="ph" placeholder="Phone Number">' +
-    '<input type="password" id="pw" placeholder="Password (4+ chars)">' +
-    '<button onclick="signup()" style="background: var(--accent); margin-top: 12px">Create Account</button>' +
+    '<input type="email" id="em" placeholder="Email" />' +
+    '<input type="tel" id="ph" placeholder="Phone Number" />' +
+    '<input type="password" id="pw" placeholder="Password (4+ chars)" />' +
+    '<button onclick="signup()" style="margin-top: 12px; background: #28a745">Create Account</button>' +
+    '<div id="signup-msg"></div>' +
     '</div>' +
     
-    '<div>' +
-    '<h3 style="margin-top: 0">🔑 SIGN IN</h3>' +
+    '<div style="border-top: 1px solid var(--line); margin: 20px 0; padding-top: 20px">' +
+    '<h3 style="margin-top: 0">🔑 Sign In</h3>' +
     '<input type="text" id="nm2" placeholder="Your Name" style="margin-top: 0">' +
     '<input type="password" id="pw2" placeholder="Password">' +
     '<button class="sec" onclick="signin()" style="border: 2px solid var(--accent); color: var(--accent)">Sign In</button>' +
+    '<div id="signin-msg"></div>' +
     '</div>' +
     '</div>';
   
   nav([]);
   render(h);
   
-  // Check if admin exists and update UI accordingly
-  if (firebaseReady) {
-    refDB.child("users").once("value").then(function(snap) {
-      var allUsers = snap.val();
-      var hasAdmin = false;
-      
-      if (allUsers && typeof allUsers === "object") {
-        for (var key in allUsers) {
-          var u = allUsers[key];
-          if (u.role === "admin" || u.role === "co-admin") {
-            hasAdmin = true;
-            break;
-          }
-        }
-      }
-      
-      var msg = document.getElementById("status-message");
-      if (!hasAdmin) {
-        msg.innerHTML = '<b>👑 You\'re creating the first account!</b><br>You will become the Admin and can manage other team members.';
-        msg.style.background = "#e8f5e9";
-        msg.style.color = "#2e7d32";
-      } else {
-        msg.innerHTML = '<b>⏳ Member Account</b><br>Your account will need Admin approval before you can sign in.';
-        msg.style.background = "#fff3cd";
-        msg.style.color = "#856404";
-      }
-    });
-  }
+  log("Firebase ready: " + firebaseReady);
 }
 
 function signup() {
@@ -233,75 +187,74 @@ function signup() {
   var ph = document.getElementById("ph").value.trim();
   var pw = document.getElementById("pw").value;
   
-  if (!nm || !em || !ph || pw.length < 4) {
-    alert("❌ Please fill all fields (password 4+ chars)");
-    return;
-  }
+  log("SIGNUP: name=" + nm + ", email=" + em + ", phone=" + ph + ", pw_len=" + pw.length);
+  
+  if (!nm) return showMsg("signup-msg", "❌ Enter your name", "error");
+  if (!em) return showMsg("signup-msg", "❌ Enter your email", "error");
+  if (!ph) return showMsg("signup-msg", "❌ Enter your phone", "error");
+  if (pw.length < 4) return showMsg("signup-msg", "❌ Password must be 4+ chars", "error");
   
   if (!firebaseReady) {
-    alert("❌ Firebase not ready yet.\n\nWait a moment and try again.");
-    return;
+    return showMsg("signup-msg", "⏳ Firebase not ready yet. Wait a moment.", "error");
   }
   
-  log("Creating account for: " + nm);
+  showMsg("signup-msg", "⏳ Creating account...", "info");
   
   var uid = "u_" + Math.random().toString().substr(2, 9);
+  log("Generated UID: " + uid);
   
+  // Check if admin exists
   refDB.child("users").once("value").then(function(snap) {
-    var allUsers = snap.val();
-    log("Users in database: " + (allUsers ? Object.keys(allUsers).length : 0));
-    
     var hasAdmin = false;
+    var userData = snap.val();
+    log("Users snapshot: " + (userData ? "exists" : "null"));
     
-    // Check if any existing user has admin role
-    if (allUsers && typeof allUsers === "object") {
-      for (var key in allUsers) {
-        var u = allUsers[key];
-        if (u.role === "admin" || u.role === "co-admin") {
+    if (userData) {
+      for (var key in userData) {
+        if (userData[key].role === "admin" || userData[key].role === "co-admin") {
           hasAdmin = true;
-          log("Found existing admin: " + u.name);
+          log("Found existing admin");
           break;
         }
       }
     }
     
-    // First account = admin, others = member
     var role = hasAdmin ? "member" : "admin";
-    var status = "approved"; // All new accounts approved
+    log("Assigning role: " + role + ", hasAdmin: " + hasAdmin);
     
-    log("Role: " + role + ", Status: " + status);
-    
-    var userData = {
+    var newUser = {
       name: nm,
       email: em,
       phone: ph,
       pass: pw,
       role: role,
-      status: status,
+      status: "approved",
       inst: [],
       off: {},
       createdAt: new Date().getTime()
     };
     
-    log("Saving user " + uid + " to Firebase");
+    log("Writing user to: /worship/users/" + uid);
     
-    refDB.child("users").child(uid).set(userData, function(error) {
+    refDB.child("users/" + uid).set(newUser, function(error) {
       if (error) {
-        log("Firebase error: " + error.message);
-        alert("❌ Error creating account:\n" + error.message);
+        log("❌ Firebase write error: " + error.message);
+        showMsg("signup-msg", "❌ Error: " + error.message, "error");
       } else {
-        log("Account created successfully!");
+        log("✓ User created successfully!");
+        showMsg("signup-msg", "✓ Account created! Now sign in below.", "success");
+        
         if (role === "admin") {
-          alert("✅ Admin account created!\n\n👑 You are the Admin\n\nSign in now to get started.");
+          alert("✅ Admin Account Created!\n\n👑 You are now the Admin\n\nPlease sign in below to continue.");
         } else {
-          alert("✓ Member account created!\n\nWaiting for admin approval.");
+          alert("✓ Member account created!\nWaiting for admin approval.");
         }
-        login();
       }
     });
+    
   }).catch(function(e) {
-    log("Error in signup: " + e.message);
-    alert("❌ Error:\n" + e.message);
+    log("❌ Error checking users: " + e.message);
+    showMsg("signup-msg", "❌ Error: " + e.message, "error");
   });
 }
 
@@ -309,179 +262,86 @@ function signin() {
   var nm = document.getElementById("nm2").value.trim();
   var pw = document.getElementById("pw2").value;
   
-  if (!nm || !pw) {
-    alert("❌ Enter your name and password");
-    return;
-  }
+  log("SIGNIN: name=" + nm + ", pw_len=" + pw.length);
+  
+  if (!nm) return showMsg("signin-msg", "❌ Enter your name", "error");
+  if (!pw) return showMsg("signin-msg", "❌ Enter your password", "error");
   
   if (!firebaseReady) {
-    alert("❌ Firebase not ready yet.\n\nWait a moment and try again.");
-    return;
+    return showMsg("signin-msg", "⏳ Firebase not ready yet. Wait a moment.", "error");
   }
+  
+  showMsg("signin-msg", "⏳ Signing in...", "info");
   
   refDB.child("users").once("value").then(function(snap) {
     var allUsers = snap.val();
+    log("Checking " + (allUsers ? Object.keys(allUsers).length : 0) + " users");
     
     if (!allUsers) {
-      alert("❌ No accounts found.\n\nCreate an account first.");
-      return;
+      return showMsg("signin-msg", "❌ No accounts found. Create one first.", "error");
     }
     
     var foundUser = null;
     var foundKey = null;
     
     for (var key in allUsers) {
-      var u = allUsers[key];
-      if (u.name === nm) {
-        foundUser = u;
+      if (allUsers[key].name === nm) {
+        foundUser = allUsers[key];
         foundKey = key;
+        log("Found user: " + key);
         break;
       }
     }
     
     if (!foundUser) {
-      alert("❌ Account not found.\n\nPlease check the name or create a new account.");
-      return;
+      return showMsg("signin-msg", "❌ Name not found", "error");
     }
     
     if (foundUser.pass !== pw) {
-      alert("❌ Password is incorrect.\n\nPlease try again.");
-      return;
+      return showMsg("signin-msg", "❌ Password incorrect", "error");
     }
     
     if (foundUser.status === "pending") {
-      alert("⏳ Your account is awaiting Admin approval.\n\nAn admin will review your request soon.");
-      return;
+      return showMsg("signin-msg", "⏳ Account pending admin approval", "error");
     }
     
-    if (foundUser.status === "rejected") {
-      alert("❌ Your account was rejected by Admin.\n\nPlease contact the admin.");
-      return;
-    }
-    
-    // Approved - log in
+    log("✓ Login successful!");
     sessionStorage.setItem("uid", foundKey);
     sessionStorage.setItem("name", foundUser.name);
     sessionStorage.setItem("role", foundUser.role);
-    if (foundUser.inst && foundUser.inst.length > 0) {
-      sessionStorage.setItem("inst", foundUser.inst.join("|"));
-    } else {
-      sessionStorage.setItem("inst", "");
-    }
-    
-    // Check for approval notification
-    if (foundUser.notifications) {
-      var hasApprovalNotif = false;
-      for (var nkey in foundUser.notifications) {
-        if (foundUser.notifications[nkey].type === "approved" && !foundUser.notifications[nkey].read) {
-          hasApprovalNotif = true;
-          break;
-        }
-      }
-      if (hasApprovalNotif) {
-        alert("✅ Welcome! Your account has been approved by the admin.\n\nYou can now access all features!");
-      }
-    }
+    sessionStorage.setItem("inst", foundUser.inst && foundUser.inst.length ? foundUser.inst.join("|") : "");
     
     show();
     
   }).catch(function(e) {
-    alert("❌ Error signing in: " + e.message);
+    log("❌ Error: " + e.message);
+    showMsg("signin-msg", "❌ Error: " + e.message, "error");
   });
+}
+
+function showMsg(elemId, msg, type) {
+  var elem = document.getElementById(elemId);
+  if (!elem) return;
+  
+  var cls = type === "error" ? "error-box" : (type === "success" ? "success-box" : "info-box");
+  elem.innerHTML = '<div class="' + cls + '">' + msg + '</div>';
 }
 
 function logout() {
-
-var notificationData = {};
-
-function loadNotifications() {
-  if (!firebaseReady) return;
-  var uid = sessionStorage.getItem("uid");
-  if (!uid) return;
-  
-  refDB.child("users/" + uid + "/notifications").on("value", function(snap) {
-    notificationData = snap.val() || {};
-    updateNotificationBadge();
-  });
-}
-
-function updateNotificationBadge() {
-  var unreadCount = 0;
-  for (var key in notificationData) {
-    if (notificationData[key] && !notificationData[key].read) {
-      unreadCount++;
-    }
-  }
-  
-  var bell = document.getElementById("notif-bell");
-  if (unreadCount > 0) {
-    bell.style.display = "block";
-    document.getElementById("notif-badge").textContent = unreadCount;
-  } else {
-    bell.style.display = "none";
-  }
-}
-
-function showNotifications() {
-  var uid = sessionStorage.getItem("uid");
-  var tabs = sessionStorage.getItem("role") === "admin" || sessionStorage.getItem("role") === "co-admin"
-    ? [["dash", "Home"], ["notif", "📬 Notifications"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
-    : [["dash", "Home"], ["notif", "📬 Notifications"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
-  
-  tab = "notif";
-  var h = '<h2>📬 Notifications</h2>';
-  
-  var hasNotif = false;
-  for (var key in notificationData) {
-    hasNotif = true;
-    var n = notificationData[key];
-    var bgColor = n.read ? "var(--bg)" : "#fff3cd";
-    var timestamp = new Date(n.timestamp).toLocaleString();
-    
-    h += '<div class="card" style="background: ' + bgColor + '">' +
-      '<div style="display: flex; justify-content: space-between; align-items: start">' +
-      '<div style="flex: 1">' +
-      '<b style="font-size: 13px">' + n.message + '</b>' +
-      '<small style="color: #999; display: block; margin-top: 6px">' + timestamp + '</small>' +
-      '</div>';
-    
-    if (!n.read) {
-      h += '<button class="sec" style="width: 60px; font-size: 11px; margin: 0; padding: 4px 8px" onclick="markNotifRead(\'' + key + '\')">Mark Read</button>';
-    }
-    
-    h += '</div></div>';
-  }
-  
-  if (!hasNotif) {
-    h += '<div class="card" style="text-align: center; color: #999; padding: 30px">No notifications</div>';
-  }
-  
-  render(h);
-  nav(tabs);
-}
-
-function markNotifRead(notifKey) {
-  var uid = sessionStorage.getItem("uid");
-  refDB.child("users/" + uid + "/notifications/" + notifKey).update({ read: true }).then(function() {
-    updateNotificationBadge();
-    showNotifications();
-  });
-}
-
   sessionStorage.clear();
   show();
 }
 
 function inst() {
-  var h = '<div class="card"><h2>Pick Your Instruments</h2><p style="color: #999; margin-bottom: 20px">Select all instruments you play</p>';
+  var h = '<div class="card"><h2>Pick Your Instruments</h2>';
   var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|").filter(function(x) { return x; }) : [];
   
   for (var i = 0; i < INST.length; i++) {
-    var n = INST[i];
-    var sel = selected.indexOf(n) >= 0 ? " on" : "";
-    h += '<span class="chip' + sel + '" onclick="tglInst(\'' + n + '\')">' + n + '</span>';
+    var sel = selected.indexOf(INST[i]) >= 0 ? " on" : "";
+    h += '<span class="chip' + sel + '" onclick="tglInst(\'' + INST[i] + '\')">' + INST[i] + '</span>';
   }
   h += '<button style="margin-top: 20px" onclick="doneInst()">Done</button></div>';
+  
   nav([]);
   render(h);
 }
@@ -489,18 +349,14 @@ function inst() {
 function tglInst(n) {
   var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|").filter(function(x) { return x; }) : [];
   var idx = selected.indexOf(n);
-  if (idx >= 0) {
-    selected.splice(idx, 1);
-  } else {
-    selected.push(n);
-  }
+  idx >= 0 ? selected.splice(idx, 1) : selected.push(n);
   sessionStorage.setItem("inst", selected.join("|"));
   inst();
 }
 
 function doneInst() {
   var selected = sessionStorage.getItem("inst") ? sessionStorage.getItem("inst").split("|").filter(function(x) { return x; }) : [];
-  if (!selected.length) return alert("Pick at least one instrument");
+  if (!selected.length) return alert("Select at least one instrument");
   
   var uid = sessionStorage.getItem("uid");
   if (firebaseReady) {
@@ -512,13 +368,9 @@ function doneInst() {
 
 function dash() {
   var role = sessionStorage.getItem("role");
-  var tabs;
-  
-  if (role === "admin" || role === "co-admin") {
-    tabs = [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
-  } else {
-    tabs = [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
-  }
+  var tabs = role === "admin" || role === "co-admin"
+    ? [["dash", "Home"], ["manage", "👥 Users"], ["plan", "Plan"], ["logout", "Logout"]]
+    : [["dash", "Home"], ["my", "Services"], ["logout", "Logout"]];
   
   if (tab === "logout") {
     logout();
@@ -526,580 +378,62 @@ function dash() {
   }
   
   var h = '<div class="card"><h2>Welcome, ' + sessionStorage.getItem("name") + '!</h2>' +
-    '<p style="color: #999">' + (sessionStorage.getItem("inst") || "") + '</p>' +
-    '</div>';
+    '<p style="color: #999">' + (sessionStorage.getItem("inst") || "no instruments") + '</p></div>';
   
   nav(tabs);
   render(h);
 }
 
 function manage() {
-  var role = sessionStorage.getItem("role");
-  if (role !== "admin" && role !== "co-admin") {
-    return dash();
-  }
-  
-  var tabs = [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
-  
-  var h = '<h2>👥 User Management</h2>';
-  
-  if (!firebaseReady) {
-    h += '<div class="card" style="color: #999">Loading...</div>';
-    render(h);
-    nav(tabs);
-    return;
-  }
-  
-  refDB.child("users").once("value").then(function(snap) {
-    var pendingUsers = [];
-    var approvedUsers = [];
-    
-    snap.forEach(function(child) {
-      var u = child.val();
-      if (u.status === "pending") {
-        pendingUsers.push({ uid: child.key, ...u });
-      } else if (u.status === "approved") {
-        approvedUsers.push({ uid: child.key, ...u });
-      }
-    });
-    
-    if (pendingUsers.length > 0) {
-      h += '<h3>⏳ Pending Requests (' + pendingUsers.length + ')</h3>';
-      for (var i = 0; i < pendingUsers.length; i++) {
-        var u = pendingUsers[i];
-        h += '<div class="user-card pending">' +
-          '<b>' + u.name + '</b>' +
-          '<small>📧 ' + u.email + '</small>' +
-          '<small>📱 ' + u.phone + '</small>' +
-          '<div class="user-actions">' +
-          '<button onclick="approveUser(\'' + u.uid + '\', \'' + u.name + '\')" style="background: #28a745; margin: 0">✓ Approve</button>' +
-          '<button class="danger" onclick="rejectUser(\'' + u.uid + '\', \'' + u.name + '\')" style="margin: 0">✗ Reject</button>' +
-          '</div>' +
-          '</div>';
-      }
-    }
-    
-    if (approvedUsers.length > 0) {
-      h += '<h3>✓ Approved Members (' + approvedUsers.length + ')</h3>';
-      for (var i = 0; i < approvedUsers.length; i++) {
-        var u = approvedUsers[i];
-        var isCoAdmin = u.role === "co-admin";
-        h += '<div class="user-card approved">' +
-          '<b>' + u.name + '</b>' +
-          '<small>Role: ' + (isCoAdmin ? '⭐ Co-Admin' : '👤 Member') + '</small>' +
-          '<small>' + (u.inst && u.inst.length ? u.inst.join(", ") : "No instruments") + '</small>' +
-          '<div class="user-actions">' +
-          (isCoAdmin ? 
-            '<button class="sec" onclick="demoteCoAdmin(\'' + u.uid + '\', \'' + u.name + '\')" style="margin: 0; grid-column: 1/3">⬇ Remove Co-Admin</button>' :
-            '<button class="sec" onclick="promoteCoAdmin(\'' + u.uid + '\', \'' + u.name + '\')" style="margin: 0; grid-column: 1/3">⭐ Make Co-Admin</button>'
-          ) +
-          '</div>' +
-          '</div>';
-      }
-    }
-    
-    if (pendingUsers.length === 0 && approvedUsers.length === 0) {
-      h = '<h2>👥 User Management</h2><div class="card" style="text-align: center; color: #999; padding: 30px">No users yet</div>';
-    }
-    
-    render(h);
-  });
-  
+  var tabs = [["dash", "Home"], ["manage", "👥 Users"], ["plan", "Plan"], ["logout", "Logout"]];
+  var h = '<h2>👥 User Management</h2><div class="card">No pending approvals</div>';
   nav(tabs);
-}
-
-function approveUser(uid, name) {
-  if (!firebaseReady) return;
-  refDB.child("users/" + uid).update({ status: "approved" }).then(function() {
-    // Create notification for the user
-    var notifId = "notif_" + Math.random().toString().substr(2, 9);
-    refDB.child("users/" + uid + "/notifications/" + notifId).set({
-      type: "approved",
-      message: "Your account has been approved! You can now sign in.",
-      timestamp: new Date().getTime(),
-      read: false
-    });
-    alert("✓ " + name + " approved!\n📧 Notification sent to user");
-    manage();
-  });
-}
-
-function rejectUser(uid, name) {
-  if (!confirm("Reject " + name + "?")) return;
-  if (!firebaseReady) return;
-  refDB.child("users/" + uid).update({ status: "rejected" }).then(function() {
-    alert("User rejected");
-    manage();
-  });
-}
-
-function promoteCoAdmin(uid, name) {
-  if (!firebaseReady) return;
-  refDB.child("users/" + uid).update({ role: "co-admin" }).then(function() {
-    alert("⭐ " + name + " is now Co-Admin!");
-    manage();
-  });
-}
-
-function demoteCoAdmin(uid, name) {
-  if (!firebaseReady) return;
-  refDB.child("users/" + uid).update({ role: "member" }).then(function() {
-    alert("" + name + " is now a regular member");
-    manage();
-  });
-}
-
-function plan() {
-  var tabs = [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
-  
-  var h = '<div class="card"><h2>Plan Service</h2>' +
-    '<label>Type</label>' +
-    '<select id="st"><option>Sunday</option><option>Practice</option><option>Friday Prayer</option><option>Special</option></select>' +
-    '<label>Date</label>' +
-    '<input type="date" id="sd">' +
-    '<label>Time</label>' +
-    '<input type="time" id="sm" value="10:00">' +
-    '<button onclick="addSvc()">Add Service</button>' +
-    '</div>';
-  
-  if (!firebaseReady) {
-    h += '<div class="card" style="color: #999">Loading services...</div>';
-    render(h);
-    nav(tabs);
-    return;
-  }
-  
-  refDB.child("services").once("value").then(function(snap) {
-    snap.forEach(function(child) {
-      var s = child.val();
-      h += '<div class="card"><b>' + s.name + '</b><br><small>' + s.date + ' ' + s.time + '</small>' +
-        '<button class="sec" style="width: 100%; margin-top: 8px" onclick="editSvc(\'' + child.key + '\')">Assign Team</button></div>';
-    });
-    render(h);
-  });
-  
-  nav(tabs);
-}
-
-function addSvc() {
-  if (!firebaseReady) return alert("Firebase not ready");
-  var t = document.getElementById("st").value;
-  var d = document.getElementById("sd").value;
-  var tm = document.getElementById("sm").value;
-  if (!d) return alert("Pick date");
-  
-  var id = "s_" + Math.random().toString().substr(2, 9);
-  refDB.child("services/" + id).set({
-    name: t,
-    date: d,
-    time: tm,
-    slots: {}
-  }).then(function() {
-    plan();
-  });
-}
-
-function editSvc(id) {
-  var tabs = [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]];
-  
-  if (!firebaseReady) return plan();
-  
-  refDB.child("services/" + id).once("value").then(function(snapSvc) {
-    var s = snapSvc.val();
-    if (!s) return plan();
-    
-    refDB.child("users").once("value").then(function(snapUsers) {
-      var allUsers = {};
-      snapUsers.forEach(function(child) {
-        var u = child.val();
-        if (u.status === "approved") {
-          allUsers[child.key] = u;
-        }
-      });
-      
-      var h = '<div class="card"><h2>' + s.name + '</h2><small style="color: #999">' + s.date + ' at ' + s.time + '</small>';
-      
-      for (var i = 0; i < INST.length; i++) {
-        var ins = INST[i];
-        var assigned = s.slots && s.slots[ins] ? s.slots[ins] : {};
-        
-        h += '<div style="margin-top: 16px; padding: 12px; background: var(--bg); border-radius: 6px">';
-        h += '<label style="margin: 0 0 8px 0"><b>' + ins + '</b></label>';
-        
-        h += '<div style="margin-bottom: 12px">';
-        var hasAssigned = false;
-        for (var uid in assigned) {
-          hasAssigned = true;
-          var u = allUsers[uid];
-          if (u) {
-            h += '<div style="background: var(--accent); color: white; padding: 8px; margin: 4px 0; display: flex; justify-content: space-between; border-radius: 4px; font-size: 13px; align-items: center">' +
-              '<span>✓ ' + u.name + '</span>' +
-              '<button class="sec" style="width: 50px; padding: 4px 8px; margin: 0; font-size: 11px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white" onclick="delAssign(\'' + id + '\', \'' + ins + '\', \'' + uid + '\')">Remove</button>' +
-              '</div>';
-          }
-        }
-        if (!hasAssigned) {
-          h += '<div style="color: #999; font-size: 12px; padding: 8px; font-style: italic">No one assigned yet</div>';
-        }
-        h += '</div>';
-        
-        h += '<select onchange="addAssignAndRefresh(\'' + id + '\', \'' + ins + '\', this.value)">';
-        h += '<option value="">+ Add ' + ins + '...</option>';
-        
-        for (var uid in allUsers) {
-          var u = allUsers[uid];
-          var inst = u.inst || [];
-          if (inst.indexOf(ins) >= 0 && (!assigned || !assigned[uid])) {
-            h += '<option value="' + uid + '">' + u.name + '</option>';
-          }
-        }
-        
-        h += '</select>';
-        h += '</div>';
-      }
-      
-      h += '<button class="sec" style="margin-top: 20px; width: 100%; padding: 12px" onclick="plan()"><b>Back to Services</b></button></div>';
-      
-      nav(tabs);
-      render(h);
-    });
-  });
-}
-
-function addAssignAndRefresh(sid, inst, uid) {
-  if (!uid || !firebaseReady) return;
-  
-  refDB.child("services/" + sid + "/slots/" + inst + "/" + uid).set(true).then(function() {
-    setTimeout(function() {
-      editSvc(sid);
-    }, 300);
-  }).catch(function(e) {
-    alert("Error assigning: " + e.message);
-  });
-}
-
-function delAssign(sid, inst, uid) {
-  if (!firebaseReady) return;
-  refDB.child("services/" + sid + "/slots/" + inst + "/" + uid).remove();
-}
-
-function songs() {
-  var role = sessionStorage.getItem("role");
-  var tabs = (role === "admin" || role === "co-admin")
-    ? [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
-    : [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
-  
-  var h = '<h2>Song Library</h2>';
-  
-  if (role === "admin" || role === "co-admin") {
-    h += '<div class="card"><h3>Add Song</h3>' +
-      '<input type="text" id="sn" placeholder="Song title">' +
-      '<label>Key</label>' +
-      '<select id="sk">' + KEYS.map(function(k) { return '<option>' + k + '</option>'; }).join("") + '</select>' +
-      '<label>Notes/Tempo</label>' +
-      '<input type="text" id="sn2" placeholder="e.g. 120 BPM">' +
-      '<label>Lyrics</label>' +
-      '<textarea id="sl" rows="4" placeholder="Lyrics..."></textarea>' +
-      '<button onclick="addSong()">Add</button></div>';
-  }
-  
-  if (!firebaseReady) {
-    h += '<div class="card" style="color: #999">Loading songs...</div>';
-    render(h);
-    nav(tabs);
-    return;
-  }
-  
-  refDB.child("songs").once("value").then(function(snap) {
-    if (!snap.val()) {
-      h += '<div style="text-align: center; color: #999; padding: 30px">No songs yet</div>';
-    } else {
-      snap.forEach(function(child) {
-        var sg = child.val();
-        h += '<div class="song"><b>' + sg.title + '</b>' +
-          '<small>Key: ' + sg.key + '</small>' +
-          '<small>' + sg.notes + '</small>';
-        if (sg.lyrics) {
-          h += '<details><summary>Lyrics</summary><pre style="font-size: 11px; white-space: pre-wrap; overflow-x: auto; max-height: 150px">' + sg.lyrics + '</pre></details>';
-        }
-        if (role === "admin" || role === "co-admin") {
-          h += '<button class="sec" style="margin-top: 8px; font-size: 12px" onclick="delSong(\'' + child.key + '\')">Delete</button>';
-        }
-        h += '</div>';
-      });
-    }
-    render(h);
-  });
-  
-  nav(tabs);
-}
-
-function addSong() {
-  if (!firebaseReady) return alert("Firebase not ready");
-  var nm = document.getElementById("sn").value.trim();
-  var ky = document.getElementById("sk").value;
-  var nt = document.getElementById("sn2").value.trim();
-  var ly = document.getElementById("sl").value.trim();
-  
-  if (!nm) return alert("Title?");
-  
-  var sg = { title: nm, key: ky, notes: nt, lyrics: ly };
-  var id = "sg_" + Math.random().toString().substr(2, 9);
-  
-  refDB.child("songs/" + id).set(sg).then(function() {
-    songs();
-  });
-}
-
-function delSong(id) {
-  if (!firebaseReady) return;
-  refDB.child("songs/" + id).remove();
-  songs();
-}
-
-function my() {
-  var tabs = [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
-  var uid = sessionStorage.getItem("uid");
-  
-  var h = '<h2>Your Services</h2>';
-  
-  if (!firebaseReady) {
-    h += '<div class="card" style="color: #999">Loading...</div>';
-    render(h);
-    nav(tabs);
-    return;
-  }
-  
-  refDB.child("services").once("value").then(function(snap) {
-    var found = false;
-    snap.forEach(function(child) {
-      var s = child.val();
-      if (s.slots) {
-        for (var inst in s.slots) {
-          if (s.slots[inst] && s.slots[inst][uid]) {
-            found = true;
-            h += '<div class="card"><b>' + s.name + '</b><br><small>' + s.date + ' ' + s.time + '</small></div>';
-          }
-        }
-      }
-    });
-    
-    if (!found) {
-      h = '<h2>Your Services</h2><div style="text-align: center; color: #999; padding: 30px">None assigned yet</div>';
-    }
-    
-    render(h);
-  });
-  
-  nav(tabs);
-}
-
-function avail() {
-  var tabs = [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
-  var uid = sessionStorage.getItem("uid");
-  
-  if (!firebaseReady) {
-    render('<div class="card" style="color: #999">Loading...</div>');
-    nav(tabs);
-    return;
-  }
-  
-  refDB.child("users/" + uid + "/off").once("value").then(function(snap) {
-    var off = snap.val() || {};
-    selectedDays = {};
-    
-    for (var key in off) {
-      selectedDays[key] = true;
-    }
-    
-    renderYearCalendar(uid);
-  });
-  
-  nav(tabs);
-}
-
-function renderYearCalendar(uid) {
-  var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  var today = new Date();
-  var currentYear = today.getFullYear();
-  
-  var h = '<div><h2>Select Off Days for the Year</h2>' +
-    '<p style="color: #999; font-size: 12px">Click dates to mark unavailable. Click "Save" when done.</p>' +
-    '<div style="overflow-x: auto">';
-  
-  for (var year = currentYear; year <= currentYear + 1; year++) {
-    h += '<div style="display: inline-block; margin: 10px; min-width: 250px">';
-    h += '<h3 style="text-align: center; margin: 8px 0">' + year + '</h3>';
-    
-    for (var m = 0; m < 12; m++) {
-      var monthDate = new Date(year, m, 1);
-      var daysInMonth = new Date(year, m + 1, 0).getDate();
-      var firstDay = monthDate.getDay();
-      
-      h += '<div style="margin: 10px 0">';
-      h += '<div style="font-weight: bold; font-size: 13px; text-align: center; padding: 4px">' + months[m] + '</div>';
-      h += '<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 8px">';
-      
-      var dayHeaders = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-      for (var dh = 0; dh < 7; dh++) {
-        h += '<div style="text-align: center; font-size: 10px; font-weight: bold; color: #999">' + dayHeaders[dh] + '</div>';
-      }
-      
-      for (var e = 0; e < firstDay; e++) {
-        h += '<div></div>';
-      }
-      
-      for (var day = 1; day <= daysInMonth; day++) {
-        var dateStr = year + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-        var isSelected = selectedDays[dateStr] ? true : false;
-        var isToday = (year === today.getFullYear() && m === today.getMonth() && day === today.getDate());
-        var style = 'cursor: pointer; padding: 6px; text-align: center; font-size: 12px; border-radius: 4px; border: 1px solid var(--line); ';
-        
-        if (isSelected) {
-          style += 'background: var(--accent); color: white; font-weight: bold; border-color: var(--accent);';
-        } else if (isToday) {
-          style += 'border: 2px solid var(--accent);';
-        } else {
-          style += 'background: var(--bg);';
-        }
-        
-        h += '<div style="' + style + '" onclick="toggleDay(\'' + dateStr + '\')">' + day + '</div>';
-      }
-      
-      h += '</div></div>';
-    }
-    
-    h += '</div>';
-  }
-  
-  h += '</div>';
-  h += '<button style="margin-top: 20px" onclick="saveOffDays()">Save Off Days</button>';
-  h += '<button class="sec" style="margin-top: 8px" onclick="clearAllDays()">Clear All</button>';
-  
   render(h);
 }
 
-function toggleDay(dateStr) {
-  if (selectedDays[dateStr]) {
-    delete selectedDays[dateStr];
-  } else {
-    selectedDays[dateStr] = true;
-  }
-  
-  var uid = sessionStorage.getItem("uid");
-  renderYearCalendar(uid);
+function plan() {
+  var tabs = [["dash", "Home"], ["manage", "👥 Users"], ["plan", "Plan"], ["logout", "Logout"]];
+  var h = '<h2>Plan Services</h2><div class="card">Service planning coming soon</div>';
+  nav(tabs);
+  render(h);
 }
 
-function saveOffDays() {
-  if (!firebaseReady) return alert("Firebase not ready");
-  
-  var uid = sessionStorage.getItem("uid");
-  
-  refDB.child("users/" + uid + "/off").set(selectedDays).then(function() {
-    alert("Off days saved!");
-    avail();
-  }).catch(function(e) {
-    alert("Error saving: " + e.message);
-  });
+function my() {
+  var tabs = [["dash", "Home"], ["my", "Services"], ["logout", "Logout"]];
+  var h = '<h2>Your Services</h2><div class="card">No services assigned yet</div>';
+  nav(tabs);
+  render(h);
 }
 
-function clearAllDays() {
-  if (confirm("Clear all selected off days?")) {
-    selectedDays = {};
-    var uid = sessionStorage.getItem("uid");
-    renderYearCalendar(uid);
-  }
+function avail() {
+  var tabs = [["dash", "Home"], ["my", "Services"], ["logout", "Logout"]];
+  var h = '<h2>Availability</h2><div class="card">Coming soon</div>';
+  nav(tabs);
+  render(h);
 }
 
 function chat() {
-  var role = sessionStorage.getItem("role");
-  var tabs = (role === "admin" || role === "co-admin")
-    ? [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
-    : [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
-  
-  var h = '<div class="card"><h2>Team Chat</h2><div style="border: 1px solid var(--line); padding: 10px; height: 200px; overflow-y: auto; margin: 10px 0; background: var(--bg); border-radius: 6px">';
-  
-  if (!firebaseReady) {
-    h += '<div style="color: #999">Loading chat...</div>';
-    render(h);
-    nav(tabs);
-    return;
-  }
-  
-  refDB.child("messages").orderByChild("time").limitToLast(50).on("value", function(snap) {
-    var msgs = [];
-    snap.forEach(function(child) {
-      msgs.push(child.val());
-    });
-    
-    h = '<div class="card"><h2>Team Chat</h2><div style="border: 1px solid var(--line); padding: 10px; height: 200px; overflow-y: auto; margin: 10px 0; background: var(--bg); border-radius: 6px">';
-    
-    for (var i = 0; i < msgs.length; i++) {
-      var m = msgs[i];
-      var t = new Date(m.time).toLocaleTimeString();
-      h += '<div class="msg"><b>' + m.name + '</b> <span style="color: #999; font-size: 10px">' + t + '</span><br>' + m.text + '</div>';
-    }
-    
-    h += '</div><input type="text" id="mc" placeholder="Message..." style="margin-bottom: 0"><button onclick="sendMsg()" style="margin-top: 4px">Send</button></div>';
-    render(h);
-  });
-  
+  var tabs = [["dash", "Home"], ["logout", "Logout"]];
+  var h = '<h2>Chat</h2><div class="card">Coming soon</div>';
   nav(tabs);
-}
-
-function sendMsg() {
-  if (!firebaseReady) return alert("Firebase not ready");
-  var tx = document.getElementById("mc").value.trim();
-  if (!tx) return;
-  
-  refDB.child("messages").push({
-    name: sessionStorage.getItem("name"),
-    text: tx,
-    time: new Date().getTime()
-  });
-  
-  document.getElementById("mc").value = "";
+  render(h);
 }
 
 function team() {
-  var role = sessionStorage.getItem("role");
-  var tabs = (role === "admin" || role === "co-admin")
-    ? [["dash", "Home"], ["notif", "📬"], ["manage", "👥 Users"], ["plan", "Plan"], ["songs", "Songs"], ["chat", "Chat"], ["team", "Team"], ["logout", "Logout"]]
-    : [["dash", "Home"], ["notif", "📬"], ["my", "Services"], ["songs", "Songs"], ["avail", "Off"], ["chat", "Chat"], ["logout", "Logout"]];
-  
-  var h = '<h2>Team Members</h2>';
-  
-  if (!firebaseReady) {
-    h += '<div class="card" style="color: #999">Loading team...</div>';
-    render(h);
-    nav(tabs);
-    return;
-  }
-  
-  refDB.child("users").once("value").then(function(snap) {
-    var userCount = 0;
-    snap.forEach(function(child) {
-      var u = child.val();
-      if (u.status === "approved") {
-        userCount++;
-        var roleIcon = u.role === "admin" ? "👑" : (u.role === "co-admin" ? "⭐" : "👤");
-        h += '<div class="card"><b>' + roleIcon + ' ' + u.name + '</b>' +
-          '<br><small style="color: #999">' + (u.inst && u.inst.length ? u.inst.join(", ") : "—") + '</small></div>';
-      }
-    });
-    
-    if (userCount === 0) {
-      h = '<h2>Team Members</h2><div class="card" style="text-align: center; color: #999; padding: 30px">No members yet</div>';
-    }
-    
-    render(h);
-  });
-  
+  var tabs = [["dash", "Home"], ["logout", "Logout"]];
+  var h = '<h2>Team Members</h2><div class="card">No members yet</div>';
   nav(tabs);
+  render(h);
+}
+
+function songs() {
+  var tabs = [["dash", "Home"], ["logout", "Logout"]];
+  var h = '<h2>Songs</h2><div class="card">Coming soon</div>';
+  nav(tabs);
+  render(h);
 }
 
 show();
 </script>
-
 </body>
 </html>
