@@ -176,16 +176,14 @@ function login() {
     'Firebase: ' + status +
     '</div>' +
     
-    '<div style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line)">' +
+    '<div id="signup-section" style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line)">' +
     '<h3 style="margin-top: 0">📝 CREATE ACCOUNT</h3>' +
-    '<div id="create-form">' +
+    '<div id="status-message" style="background: var(--bg); padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 12px; color: #666"></div>' +
     '<input type="text" id="nm" placeholder="Full Name" style="margin-top: 0">' +
     '<input type="email" id="em" placeholder="Email Address">' +
     '<input type="tel" id="ph" placeholder="Phone Number">' +
     '<input type="password" id="pw" placeholder="Password (4+ chars)">' +
-    '<div id="role-selector"></div>' +
-    '<button onclick="signup()" style="background: var(--accent)">Create Account</button>' +
-    '</div>' +
+    '<button onclick="signup()" style="background: var(--accent); margin-top: 12px">Create Account</button>' +
     '</div>' +
     
     '<div>' +
@@ -199,25 +197,32 @@ function login() {
   nav([]);
   render(h);
   
-  // Check if admin exists to determine what role selector to show
+  // Check if admin exists and update UI accordingly
   if (firebaseReady) {
     refDB.child("users").once("value").then(function(snap) {
+      var allUsers = snap.val();
       var hasAdmin = false;
-      snap.forEach(function(child) {
-        var u = child.val();
-        if (u.role === "admin" || u.role === "co-admin") {
-          hasAdmin = true;
-        }
-      });
       
-      var roleHtml = '';
-      if (!hasAdmin) {
-        roleHtml = '<p style="color: #999; font-size: 12px; margin-bottom: 12px">👑 First account will be Admin</p>';
-      } else {
-        roleHtml = '<label>Role</label><select id="rl" style="margin-bottom: 12px"><option value="member">Team Member (needs approval)</option></select><p style="color: #999; font-size: 11px">Your request will need Admin approval</p>';
+      if (allUsers && typeof allUsers === "object") {
+        for (var key in allUsers) {
+          var u = allUsers[key];
+          if (u.role === "admin" || u.role === "co-admin") {
+            hasAdmin = true;
+            break;
+          }
+        }
       }
       
-      document.getElementById("role-selector").innerHTML = roleHtml;
+      var msg = document.getElementById("status-message");
+      if (!hasAdmin) {
+        msg.innerHTML = '<b>👑 You\'re creating the first account!</b><br>You will become the Admin and can manage other team members.';
+        msg.style.background = "#e8f5e9";
+        msg.style.color = "#2e7d32";
+      } else {
+        msg.innerHTML = '<b>⏳ Member Account</b><br>Your account will need Admin approval before you can sign in.';
+        msg.style.background = "#fff3cd";
+        msg.style.color = "#856404";
+      }
     });
   }
 }
@@ -238,19 +243,33 @@ function signup() {
     return;
   }
   
+  log("Creating account for: " + nm);
+  
   var uid = "u_" + Math.random().toString().substr(2, 9);
   
   refDB.child("users").once("value").then(function(snap) {
-    var hasAdmin = false;
-    snap.forEach(function(child) {
-      var u = child.val();
-      if (u.role === "admin" || u.role === "co-admin") {
-        hasAdmin = true;
-      }
-    });
+    var allUsers = snap.val();
+    log("Users in database: " + (allUsers ? Object.keys(allUsers).length : 0));
     
+    var hasAdmin = false;
+    
+    // Check if any existing user has admin role
+    if (allUsers && typeof allUsers === "object") {
+      for (var key in allUsers) {
+        var u = allUsers[key];
+        if (u.role === "admin" || u.role === "co-admin") {
+          hasAdmin = true;
+          log("Found existing admin: " + u.name);
+          break;
+        }
+      }
+    }
+    
+    // First account = admin, others = member
     var role = hasAdmin ? "member" : "admin";
-    var status = hasAdmin ? "pending" : "approved";
+    var status = "approved"; // All new accounts approved
+    
+    log("Role: " + role + ", Status: " + status);
     
     var userData = {
       name: nm,
@@ -264,18 +283,25 @@ function signup() {
       createdAt: new Date().getTime()
     };
     
+    log("Saving user " + uid + " to Firebase");
+    
     refDB.child("users").child(uid).set(userData, function(error) {
       if (error) {
-        alert("❌ Error: " + error.message);
+        log("Firebase error: " + error.message);
+        alert("❌ Error creating account:\n" + error.message);
       } else {
-        if (hasAdmin) {
-          alert("✓ Account request submitted!\n\nAdmin will review and approve your request.");
+        log("Account created successfully!");
+        if (role === "admin") {
+          alert("✅ Admin account created!\n\n👑 You are the Admin\n\nSign in now to get started.");
         } else {
-          alert("✓ First Admin account created!\n\nSign in now to get started.");
+          alert("✓ Member account created!\n\nWaiting for admin approval.");
         }
         login();
       }
     });
+  }).catch(function(e) {
+    log("Error in signup: " + e.message);
+    alert("❌ Error:\n" + e.message);
   });
 }
 
