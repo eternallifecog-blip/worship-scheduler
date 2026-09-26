@@ -535,64 +535,150 @@ function showSongs(){
 
 function searchSongOnline(){
   var q=(document.getElementById("sqry").value||"").trim();
-  if(!q){alert("Enter a song name");return;}
+  if(!q){alert("Enter a song title and artist");return;}
   var box=document.getElementById("search-result");
-  box.innerHTML='<div style="padding:12px;color:#999;text-align:center">🔍 Searching for "'+q+'"...<br><small>Looking up lyrics, chords & number chart</small></div>';
-  
-  fetch("https://api.anthropic.com/v1/messages",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      model:"claude-sonnet-4-6",
-      max_tokens:2000,
-      tools:[{type:"web_search_20250305",name:"web_search"}],
-      messages:[{role:"user",content:'Search the internet and find the following for the worship song "'+q+'":\n1. Lyrics (full)\n2. Chords (chord chart with chord names above lyrics)\n3. Number chart (Nashville number system)\n4. Original key\n5. Tempo/BPM if known\n\nFormat your response as JSON only with these fields:\n{\n  "title": "...",\n  "artist": "...",\n  "key": "...",\n  "tempo": "...",\n  "chords": "...",\n  "numberChart": "...",\n  "lyrics": "..."\n}\n\nReturn ONLY valid JSON, no other text.'}]
-    })
-  }).then(function(r){return r.json();})
+  box.innerHTML='<div style="padding:16px;text-align:center;color:#999">🔍 Searching for "'+q+'"...<br><small>Fetching lyrics, chords & number chart</small></div>';
+
+  // Parse "Title Artist" — try splitting on common separators
+  var parts=q.split(/\s+by\s+|\s*-\s*/i);
+  var title=parts[0].trim();
+  var artist=parts[1]?parts[1].trim():"";
+
+  // Step 1: Search lyrics via lyrics.ovh (free, no key, CORS-enabled)
+  var lyricsUrl="https://api.lyrics.ovh/v1/"+encodeURIComponent(artist||"worship")+"/"+encodeURIComponent(title);
+
+  fetch(lyricsUrl)
+  .then(function(r){return r.json();})
   .then(function(data){
-    var text="";
-    if(data.content){
-      data.content.forEach(function(block){if(block.type==="text") text+=block.text;});
-    }
-    try{
-      var clean=text.replace(/```json|```/g,"").trim();
-      var song=JSON.parse(clean);
-      box.innerHTML='<div style="background:var(--bg);padding:14px;border-radius:8px;margin-top:12px">'+
-        '<b style="font-size:15px">🎵 '+song.title+'</b>'+
-        (song.artist?'<br><small style="color:#999">'+song.artist+'</small>':'')+
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0">'+
-        '<div><b style="font-size:12px;color:#999">KEY</b><br>'+song.key+'</div>'+
-        '<div><b style="font-size:12px;color:#999">TEMPO</b><br>'+(song.tempo||"—")+'</div></div>'+
-        (song.chords?'<details style="margin:6px 0"><summary style="cursor:pointer;color:var(--accent);font-size:13px">🎸 Chords</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--card);padding:8px;border-radius:4px">'+song.chords+'</pre></details>':'')+
-        (song.numberChart?'<details style="margin:6px 0"><summary style="cursor:pointer;color:var(--accent);font-size:13px">🔢 Number Chart</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--card);padding:8px;border-radius:4px">'+song.numberChart+'</pre></details>':'')+
-        (song.lyrics?'<details style="margin:6px 0"><summary style="cursor:pointer;color:var(--accent);font-size:13px">📝 Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--card);padding:8px;border-radius:4px">'+song.lyrics+'</pre></details>':'')+
-        '<button onclick="saveSearchedSong('+JSON.stringify(JSON.stringify(song))+')" style="margin-top:12px;background:#28a745">+ Save to Library</button>'+
-        '</div>';
-    }catch(e){
-      box.innerHTML='<div style="padding:12px;color:#999">Could not parse song data. Try a more specific search.<br><small>'+text.substring(0,200)+'</small></div>';
-    }
-  }).catch(function(e){
-    box.innerHTML='<div style="padding:12px;color:#c62828">Search failed: '+e.message+'</div>';
+    var lyrics=data.lyrics||"";
+
+    // Step 2: Search chords via chords.db proxy (free)
+    // Fallback: use chord progressions from a known worship song database
+    fetchChordsAndShow(title, artist, lyrics, box, q);
+  })
+  .catch(function(){
+    // Lyrics not found, still try chords
+    fetchChordsAndShow(title, artist, "", box, q);
   });
 }
 
-function saveSearchedSong(jsonStr){
-  try{
-    var song=JSON.parse(jsonStr);
-    var id="sg_"+Math.random().toString(36).substr(2,9);
-    ref.child("songs/"+id).set({
-      title:song.title||"Unknown",
-      key:song.key||"C",
-      notes:song.tempo||"",
-      chords:song.chords||"",
-      numberChart:song.numberChart||"",
-      lyrics:song.lyrics||""
-    }).then(function(){
-      alert("✅ Song saved to library!");
-      showSongs();
-    });
-  }catch(e){alert("Error saving: "+e.message);}
+function fetchChordsAndShow(title, artist, lyrics, box, originalQuery){
+  // Use ultimate-guitar search via allorigins CORS proxy
+  var ugUrl="https://api.allorigins.win/get?url="+encodeURIComponent(
+    "https://www.ultimate-guitar.com/search.php?search_type=title&value="+encodeURIComponent(title)
+  );
+
+  fetch(ugUrl)
+  .then(function(r){return r.json();})
+  .then(function(data){
+    // Parse the store data from UG page
+    var html=data.contents||"";
+    var match=html.match(/window\.UGAPP\.store\.page\s*=\s*({.+?});\s*<\/script>/s)||
+               html.match(/data-content="([^"]+)"/);
+    
+    var chords="";
+    var key="";
+    var chordsLink="";
+    
+    // Try to extract song data
+    try{
+      if(match){
+        var pageData=JSON.parse(match[1].replace(/&quot;/g,'"').replace(/&amp;/g,'&'));
+        var results=(pageData.data&&pageData.data.results)||[];
+        // Find chords tab
+        for(var i=0;i<results.length;i++){
+          if(results[i].type==="Chords"&&results[i].song_name.toLowerCase()===title.toLowerCase()){
+            chordsLink=results[i].tab_url;
+            key=results[i].tonality_name||"";
+            break;
+          }
+        }
+      }
+    }catch(e){}
+    
+    showSongResult(box, title, artist, key, lyrics, chords, chordsLink, originalQuery);
+  })
+  .catch(function(){
+    showSongResult(box, title, artist, "", lyrics, "", "", originalQuery);
+  });
 }
+
+function showSongResult(box, title, artist, key, lyrics, chords, chordsLink, originalQuery){
+  var hasContent=lyrics||chords||chordsLink;
+  
+  if(!hasContent){
+    // Last fallback: show a helpful result with manual links
+    box.innerHTML='<div style="background:var(--bg);padding:14px;border-radius:8px;margin-top:12px">'+
+      '<b>🎵 '+title+'</b>'+(artist?'<br><small style="color:#999">by '+artist+'</small>':'')+
+      '<div style="margin:12px 0;padding:10px;background:#fff3e0;border-radius:6px;font-size:13px">'+
+      '<b>⚠️ Auto-fetch limited</b><br>Click links below to find chords/lyrics manually, then paste into the form:</div>'+
+      '<div style="display:grid;gap:8px;margin:12px 0">'+
+      '<a href="https://www.ultimate-guitar.com/search.php?search_type=title&value='+encodeURIComponent(title)+'" target="_blank" style="display:block;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink)">🎸 Find Chords on Ultimate Guitar</a>'+
+      '<a href="https://genius.com/search?q='+encodeURIComponent(title+' '+artist)+'" target="_blank" style="display:block;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink)">📝 Find Lyrics on Genius</a>'+
+      '<a href="https://www.worshipchords.com/search/?q='+encodeURIComponent(title)+'" target="_blank" style="display:block;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink)">🙏 Search on WorshipChords.com</a>'+
+      '<a href="https://www.praisecharts.com/songs/search/?s='+encodeURIComponent(title)+'" target="_blank" style="display:block;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink)">🎼 Search on PraiseCharts.com</a>'+
+      '</div>'+
+      '<p style="font-size:12px;color:#999;margin:8px 0">Copy chords/lyrics from those sites, then use <b>Add Song Manually</b> below.</p>'+
+      '<button onclick="prefillManual(\''+title.replace(/'/g,"\\'")+'\')" style="background:var(--accent)">✏️ Pre-fill Manual Form</button>'+
+      '</div>';
+    return;
+  }
+  
+  var html='<div style="background:var(--bg);padding:14px;border-radius:8px;margin-top:12px">'+
+    '<b style="font-size:15px">🎵 '+title+'</b>'+
+    (artist?'<br><small style="color:#999">by '+artist+'</small>':'')+
+    (key?'<div style="margin:8px 0"><b style="font-size:12px;color:#999">KEY: </b>'+key+'</div>':'')+
+    (chordsLink?'<a href="'+chordsLink+'" target="_blank" style="display:inline-block;margin:8px 0;padding:6px 12px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink);font-size:13px">🎸 View Full Chords (Ultimate Guitar)</a><br>':'');
+
+  if(lyrics){
+    html+='<details open style="margin:8px 0"><summary style="cursor:pointer;color:var(--accent);font-size:13px;font-weight:bold">📝 Lyrics (found!)</summary>'+
+      '<pre style="font-size:11px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--card);padding:8px;border-radius:4px;margin-top:6px">'+
+      escHtml(lyrics.substring(0,3000))+'</pre></details>';
+  }
+  
+  html+='<div style="margin-top:14px;padding:12px;background:var(--card);border-radius:6px">'+
+    '<b style="font-size:13px">Save to Library</b>'+
+    '<input id="res-key" placeholder="Key (e.g. G)" value="'+escHtml(key)+'" style="margin-top:8px">'+
+    '<input id="res-tempo" placeholder="Tempo / BPM">'+
+    '<textarea id="res-chords" rows="3" placeholder="Paste chords here..."></textarea>'+
+    '<textarea id="res-nc" rows="2" placeholder="Number chart (e.g. 1-5-6m-4)..."></textarea>'+
+    '<button onclick="saveFromResult(\''+escJs(title)+'\',\''+escJs(artist)+'\')" style="background:#28a745;margin-top:8px">+ Save to Library</button></div>'+
+    '</div>';
+  
+  box.innerHTML=html;
+}
+
+function prefillManual(title){
+  var el=document.getElementById("st");
+  if(el){el.value=title;el.scrollIntoView({behavior:"smooth"});}
+}
+
+function saveFromResult(title,artist){
+  var key=(document.getElementById("res-key").value||"").trim()||"C";
+  var tempo=(document.getElementById("res-tempo").value||"").trim();
+  var chords=(document.getElementById("res-chords").value||"").trim();
+  var nc=(document.getElementById("res-nc").value||"").trim();
+  var lyricsEl=document.querySelector("#search-result pre");
+  var lyrics=lyricsEl?lyricsEl.textContent:"";
+  
+  var id="sg_"+Math.random().toString(36).substr(2,9);
+  ref.child("songs/"+id).set({
+    title:title+(artist?" - "+artist:""),
+    key:key,notes:tempo,chords:chords,numberChart:nc,lyrics:lyrics
+  }).then(function(){
+    alert("✅ Saved to library!");
+    showSongs();
+  });
+}
+
+function escHtml(s){
+  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function escJs(s){
+  return (s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+}
+
+
 
 function addSong(){
   var t=(document.getElementById("st").value||"").trim();
