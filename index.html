@@ -376,16 +376,19 @@ function showPlan(){
     '<label>Date</label><input type="date" id="sd">'+
     '<label>Time</label><input type="time" id="sm" value="10:00">'+
     '<button onclick="addSvc()">Add Service</button></div>';
-  
   if(!fbReady){render(h);return;}
-  
   ref.child("services").once("value").then(function(snap){
     var svcs=snap.val()||{};
     var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
     keys.forEach(function(k){
       var s=svcs[k];
-      h+='<div class="card"><b>'+s.name+'</b> &nbsp;<small style="color:#999">'+s.date+' '+s.time+'</small>'+
-        '<button class="sec" style="margin-top:8px" onclick="editSvc(\''+k+'\')">Assign Team</button></div>';
+      var slist=s.songs?Object.values(s.songs).map(function(t){return'<span style="display:inline-block;background:var(--accent);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;margin:2px">🎵 '+t+'</span>';}).join(''):'';
+      h+='<div class="card"><b>'+s.name+'</b> <small style="color:#999">'+s.date+' '+s.time+'</small>'+
+        (slist?'<div style="margin-top:6px">'+slist+'</div>':'')+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+
+        '<button class="sec" onclick="editSvc(\''+k+'\')">👥 Team</button>'+
+        '<button class="sec" onclick="editSvcSongs(\''+k+'\')">🎵 Songs</button>'+
+        '</div></div>';
     });
     render(h);
   });
@@ -396,101 +399,211 @@ function addSvc(){
   var id="s_"+Math.random().toString(36).substr(2,9);
   ref.child("services/"+id).set({
     name:document.getElementById("st").value,
-    date:d,time:document.getElementById("sm").value,slots:{}
+    date:d,time:document.getElementById("sm").value,slots:{},songs:{}
   }).then(showPlan);
 }
 function editSvc(id){
   setNav(adminTabs());
   render('<div class="card">Loading...</div>');
-  
   ref.child("services/"+id).once("value").then(function(ss){
     var s=ss.val(); if(!s) return showPlan();
-    
     ref.child("users").once("value").then(function(us){
-      var users={};
-      var ud=us.val()||{};
+      var users={},ud=us.val()||{};
       for(var k in ud){if(ud[k].status==="approved") users[k]=ud[k];}
-      
       var h='<div class="card"><h2>'+s.name+'</h2><small style="color:#999">'+s.date+' at '+s.time+'</small>';
-      
+      if(s.songs&&Object.keys(s.songs).length){
+        h+='<div style="margin:12px 0"><label><b>🎵 Songs</b></label>';
+        for(var sk in s.songs){
+          h+='<div style="background:var(--bg);padding:6px 10px;border-radius:4px;margin:4px 0;font-size:13px;display:flex;justify-content:space-between;align-items:center">'+
+            '<span>🎵 '+s.songs[sk]+'</span>'+
+            '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px" onclick="removeSvcSong(\''+id+'\',\''+sk+'\')">Remove</button></div>';
+        }
+        h+='</div>';
+      }
       INST.forEach(function(ins){
         var assigned=s.slots&&s.slots[ins]?s.slots[ins]:{};
-        h+='<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:6px">'+
-          '<label style="margin:0"><b>'+ins+'</b></label>';
-        
+        h+='<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:6px"><label style="margin:0"><b>'+ins+'</b></label>';
         for(var uid in assigned){
           if(users[uid]){
             h+='<div style="background:var(--accent);color:#fff;padding:8px;margin:4px 0;display:flex;justify-content:space-between;align-items:center;border-radius:4px;font-size:13px">'+
               '<span>✓ '+users[uid].name+'</span>'+
-              '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" '+
-              'onclick="delAssign(\''+id+'\',\''+ins+'\',\''+uid+'\')">Remove</button></div>';
+              '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" onclick="delAssign(\''+id+'\',\''+ins+'\',\''+uid+'\')">Remove</button></div>';
           }
         }
-        
-        h+='<select onchange="addAssign(\''+id+'\',\''+ins+'\',this.value);this.value=\'\'">'+
-          '<option value="">+ Add '+ins+'...</option>';
+        h+='<select onchange="addAssign(\''+id+'\',\''+ins+'\',this.value);this.value=\'\'"><option value="">+ Add '+ins+'...</option>';
         for(var k in users){
           var u=users[k];
-          if(u.inst&&u.inst.indexOf(ins)>=0&&!(assigned&&assigned[k])){
-            h+='<option value="'+k+'">'+u.name+'</option>';
-          }
+          if(u.inst&&u.inst.indexOf(ins)>=0&&!(assigned&&assigned[k])) h+='<option value="'+k+'">'+u.name+'</option>';
         }
         h+='</select></div>';
       });
-      
-      h+='<button class="sec" style="margin-top:20px" onclick="showPlan()">← Back to Services</button></div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px">'+
+        '<button onclick="editSvcSongs(\''+id+'\')">🎵 Assign Songs</button>'+
+        '<button class="sec" onclick="showPlan()">← Back</button></div></div>';
       render(h);
     });
   });
 }
 function addAssign(sid,ins,uid){
   if(!uid) return;
-  ref.child("services/"+sid+"/slots/"+ins+"/"+uid).set(true).then(function(){
-    setTimeout(function(){editSvc(sid);},300);
-  });
+  ref.child("services/"+sid+"/slots/"+ins+"/"+uid).set(true).then(function(){setTimeout(function(){editSvc(sid);},300);});
 }
 function delAssign(sid,ins,uid){
-  ref.child("services/"+sid+"/slots/"+ins+"/"+uid).remove().then(function(){
-    editSvc(sid);
+  ref.child("services/"+sid+"/slots/"+ins+"/"+uid).remove().then(function(){editSvc(sid);});
+}
+function editSvcSongs(sid){
+  setNav(adminTabs());
+  render('<div class="card">Loading...</div>');
+  ref.child("services/"+sid).once("value").then(function(ss){
+    var s=ss.val(); if(!s) return showPlan();
+    ref.child("songs").once("value").then(function(songSnap){
+      var allSongs=songSnap.val()||{};
+      var assignedSongs=s.songs||{};
+      var h='<div class="card"><h2>🎵 Setlist for '+s.name+'</h2><small style="color:#999">'+s.date+' at '+s.time+'</small>';
+      h+='<div style="margin-top:14px"><label><b>Assigned Songs</b></label>';
+      var hasSongs=false;
+      for(var sk in assignedSongs){
+        hasSongs=true;
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;background:var(--accent);color:#fff;padding:8px 12px;border-radius:6px;margin:4px 0;font-size:13px">'+
+          '<span>🎵 '+assignedSongs[sk]+'</span>'+
+          '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" onclick="removeSvcSong(\''+sid+'\',\''+sk+'\')">Remove</button></div>';
+      }
+      if(!hasSongs) h+='<div style="color:#999;font-size:13px;padding:8px">No songs yet</div>';
+      h+='</div>';
+      var libKeys=Object.keys(allSongs);
+      if(libKeys.length){
+        h+='<label style="margin-top:16px"><b>Add from Library</b></label>'+
+          '<select onchange="addSvcSong(\''+sid+'\',this.value,this.options[this.selectedIndex].text);this.value=\'\'">'+
+          '<option value="">+ Pick from library...</option>';
+        libKeys.forEach(function(k){
+          if(!assignedSongs[k]) h+='<option value="'+k+'">'+allSongs[k].title+' ('+allSongs[k].key+')</option>';
+        });
+        h+='</select>';
+      }
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px">'+
+        '<button onclick="editSvc(\''+sid+'\')">← Team</button>'+
+        '<button class="sec" onclick="showPlan()">← Services</button></div></div>';
+      render(h);
+    });
   });
+}
+function addSvcSong(sid,songId,title){
+  if(!songId) return;
+  ref.child("services/"+sid+"/songs/"+songId).set(title.split(' (')[0]).then(function(){editSvcSongs(sid);});
+}
+function removeSvcSong(sid,songId){
+  ref.child("services/"+sid+"/songs/"+songId).remove().then(function(){editSvcSongs(sid);});
 }
 
 /* ===== SONGS ===== */
 function showSongs(){
   setNav(isAdmin()?adminTabs():memberTabs());
   var h='<h2>Song Library</h2>';
-  
   if(isAdmin()){
-    h+='<div class="card"><h3>Add Song</h3>'+
+    h+='<div class="card"><h3>🔍 Search Song Online</h3>'+
+      '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">'+
+      '<input id="sqry" placeholder="Song title + artist (e.g. Amazing Grace)">'+
+      '<button onclick="searchSongOnline()" style="width:auto;padding:10px 16px">Search</button></div>'+
+      '<div id="search-result"></div></div>'+
+      '<div class="card"><h3>✏️ Add Song Manually</h3>'+
       '<input id="st" placeholder="Song Title">'+
       '<label>Key</label><select id="sk">'+KEYS.map(function(k){return'<option>'+k+'</option>';}).join("")+'</select>'+
-      '<input id="snt" placeholder="Notes / Tempo">'+
-      '<textarea id="sly" rows="3" placeholder="Lyrics..."></textarea>'+
-      '<button onclick="addSong()">Add Song</button></div>';
+      '<input id="snt" placeholder="Notes / Tempo / BPM">'+
+      '<textarea id="schords" rows="3" placeholder="Chords (e.g. G - D - Em - C)"></textarea>'+
+      '<textarea id="snc" rows="3" placeholder="Number Chart (e.g. 1 - 5 - 6m - 4)"></textarea>'+
+      '<textarea id="sly" rows="4" placeholder="Lyrics..."></textarea>'+
+      '<button onclick="addSong()">Add to Library</button></div>';
   }
-  
   if(!fbReady){render(h);return;}
-  
   ref.child("songs").once("value").then(function(snap){
     var songs=snap.val()||{};
-    if(!Object.keys(songs).length){h+='<div class="card" style="text-align:center;color:#999">No songs yet</div>';}
+    if(!Object.keys(songs).length){h+='<div class="card" style="text-align:center;color:#999;padding:30px">No songs yet.<br>Search online or add manually above.</div>';}
     for(var k in songs){
       var sg=songs[k];
-      h+='<div class="song"><b>'+sg.title+'</b>'+
+      h+='<div class="song">'+
+        '<b style="font-size:15px">'+sg.title+'</b>'+
         '<small style="color:#999">Key: '+sg.key+(sg.notes?' · '+sg.notes:'')+'</small>';
-      if(sg.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent)">Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto">'+sg.lyrics+'</pre></details>';
+      if(sg.chords) h+='<details><summary style="cursor:pointer;color:var(--accent)">🎸 Chords</summary><pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.chords+'</pre></details>';
+      if(sg.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent)">🔢 Number Chart</summary><pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.numberChart+'</pre></details>';
+      if(sg.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent)">📝 Lyrics</summary><pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.lyrics+'</pre></details>';
       if(isAdmin()) h+='<button class="sec" style="margin-top:8px;font-size:12px" onclick="delSong(\''+k+'\')">Delete</button>';
       h+='</div>';
     }
     render(h);
   });
 }
+
+function searchSongOnline(){
+  var q=(document.getElementById("sqry").value||"").trim();
+  if(!q){alert("Enter a song name");return;}
+  var box=document.getElementById("search-result");
+  box.innerHTML='<div style="padding:12px;color:#999;text-align:center">🔍 Searching for "'+q+'"...<br><small>Looking up lyrics, chords & number chart</small></div>';
+  
+  fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      model:"claude-sonnet-4-6",
+      max_tokens:2000,
+      tools:[{type:"web_search_20250305",name:"web_search"}],
+      messages:[{role:"user",content:'Search the internet and find the following for the worship song "'+q+'":\n1. Lyrics (full)\n2. Chords (chord chart with chord names above lyrics)\n3. Number chart (Nashville number system)\n4. Original key\n5. Tempo/BPM if known\n\nFormat your response as JSON only with these fields:\n{\n  "title": "...",\n  "artist": "...",\n  "key": "...",\n  "tempo": "...",\n  "chords": "...",\n  "numberChart": "...",\n  "lyrics": "..."\n}\n\nReturn ONLY valid JSON, no other text.'}]
+    })
+  }).then(function(r){return r.json();})
+  .then(function(data){
+    var text="";
+    if(data.content){
+      data.content.forEach(function(block){if(block.type==="text") text+=block.text;});
+    }
+    try{
+      var clean=text.replace(/```json|```/g,"").trim();
+      var song=JSON.parse(clean);
+      box.innerHTML='<div style="background:var(--bg);padding:14px;border-radius:8px;margin-top:12px">'+
+        '<b style="font-size:15px">🎵 '+song.title+'</b>'+
+        (song.artist?'<br><small style="color:#999">'+song.artist+'</small>':'')+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0">'+
+        '<div><b style="font-size:12px;color:#999">KEY</b><br>'+song.key+'</div>'+
+        '<div><b style="font-size:12px;color:#999">TEMPO</b><br>'+(song.tempo||"—")+'</div></div>'+
+        (song.chords?'<details style="margin:6px 0"><summary style="cursor:pointer;color:var(--accent);font-size:13px">🎸 Chords</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--card);padding:8px;border-radius:4px">'+song.chords+'</pre></details>':'')+
+        (song.numberChart?'<details style="margin:6px 0"><summary style="cursor:pointer;color:var(--accent);font-size:13px">🔢 Number Chart</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--card);padding:8px;border-radius:4px">'+song.numberChart+'</pre></details>':'')+
+        (song.lyrics?'<details style="margin:6px 0"><summary style="cursor:pointer;color:var(--accent);font-size:13px">📝 Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--card);padding:8px;border-radius:4px">'+song.lyrics+'</pre></details>':'')+
+        '<button onclick="saveSearchedSong('+JSON.stringify(JSON.stringify(song))+')" style="margin-top:12px;background:#28a745">+ Save to Library</button>'+
+        '</div>';
+    }catch(e){
+      box.innerHTML='<div style="padding:12px;color:#999">Could not parse song data. Try a more specific search.<br><small>'+text.substring(0,200)+'</small></div>';
+    }
+  }).catch(function(e){
+    box.innerHTML='<div style="padding:12px;color:#c62828">Search failed: '+e.message+'</div>';
+  });
+}
+
+function saveSearchedSong(jsonStr){
+  try{
+    var song=JSON.parse(jsonStr);
+    var id="sg_"+Math.random().toString(36).substr(2,9);
+    ref.child("songs/"+id).set({
+      title:song.title||"Unknown",
+      key:song.key||"C",
+      notes:song.tempo||"",
+      chords:song.chords||"",
+      numberChart:song.numberChart||"",
+      lyrics:song.lyrics||""
+    }).then(function(){
+      alert("✅ Song saved to library!");
+      showSongs();
+    });
+  }catch(e){alert("Error saving: "+e.message);}
+}
+
 function addSong(){
   var t=(document.getElementById("st").value||"").trim();
   if(!t){alert("Enter title");return;}
   ref.child("songs/sg_"+Math.random().toString(36).substr(2,9)).set({
-    title:t,key:document.getElementById("sk").value,
-    notes:document.getElementById("snt").value,lyrics:document.getElementById("sly").value
+    title:t,
+    key:document.getElementById("sk").value,
+    notes:document.getElementById("snt").value,
+    chords:document.getElementById("schords").value,
+    numberChart:document.getElementById("snc").value,
+    lyrics:document.getElementById("sly").value
   }).then(showSongs);
 }
 function delSong(id){
