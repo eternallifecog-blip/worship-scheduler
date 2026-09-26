@@ -703,24 +703,108 @@ function showMy(){
   if(!fbReady) return;
   
   var me=uid();
-  ref.child("services").once("value").then(function(snap){
-    var svcs=snap.val()||{};
-    var h='<h2>Your Services</h2>';
+  
+  // Load services AND all users AND all songs in parallel
+  Promise.all([
+    ref.child("services").once("value"),
+    ref.child("users").once("value"),
+    ref.child("songs").once("value")
+  ]).then(function(results){
+    var svcs  = results[0].val()||{};
+    var users = results[1].val()||{};
+    var songs = results[2].val()||{};
+    
+    var h='<h2>📅 Your Services</h2>';
     var found=false;
     
     var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
+    
     keys.forEach(function(k){
       var s=svcs[k];
       if(!s.slots) return;
+      
+      // Find which instrument this member plays in this service
+      var myInst=[];
       for(var ins in s.slots){
-        if(s.slots[ins]&&s.slots[ins][me]){
-          found=true;
-          h+='<div class="card"><b>'+s.name+'</b><br><small style="color:#999">'+s.date+' '+s.time+'</small><br>'+
-            '<small style="background:var(--accent);color:#fff;padding:2px 8px;border-radius:10px">'+ins+'</small></div>';
+        if(s.slots[ins]&&s.slots[ins][me]) myInst.push(ins);
+      }
+      if(!myInst.length) return;
+      
+      found=true;
+      
+      // Build team list for this service
+      var teamByInst={};
+      for(var ins in s.slots){
+        var playerIds=Object.keys(s.slots[ins]||{});
+        if(playerIds.length){
+          teamByInst[ins]=playerIds.map(function(pid){
+            return users[pid]?users[pid].name:"Unknown";
+          });
         }
       }
+      
+      // Build songs list
+      var svcSongs=s.songs?Object.keys(s.songs).map(function(sk){
+        var songTitle=s.songs[sk];
+        var songData=songs[sk];
+        return {id:sk, title:songTitle, data:songData};
+      }):[];
+      
+      h+='<div class="card">';
+      
+      // Header
+      h+='<div style="display:flex;justify-content:space-between;align-items:start">'+
+        '<div>'+
+        '<b style="font-size:16px">'+s.name+'</b><br>'+
+        '<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small>'+
+        '</div>'+
+        '<div style="text-align:right">'+
+        myInst.map(function(i){return'<span style="display:inline-block;background:var(--accent);color:#fff;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:bold">'+i+'</span>';}).join(' ')+
+        '</div></div>';
+      
+      // Songs Section
+      if(svcSongs.length){
+        h+='<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">🎵 Songs for this service</b>';
+        svcSongs.forEach(function(sg){
+          h+='<div style="margin-top:10px;padding:10px;background:var(--card);border-radius:6px;border-left:3px solid var(--accent)">'+
+            '<b>'+sg.title+'</b>';
+          if(sg.data){
+            if(sg.data.key) h+='<span style="margin-left:10px;font-size:12px;color:#999">Key: <b style="color:var(--ink)">'+sg.data.key+'</b></span>';
+            if(sg.data.notes) h+='<span style="margin-left:10px;font-size:12px;color:#999">'+sg.data.notes+'</span>';
+            if(sg.data.chords) h+='<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">🎸 Chords</summary>'+
+              '<pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.chords+'</pre></details>';
+            if(sg.data.numberChart) h+='<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">🔢 Number Chart</summary>'+
+              '<pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.numberChart+'</pre></details>';
+            if(sg.data.lyrics) h+='<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">📝 Lyrics</summary>'+
+              '<pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.lyrics+'</pre></details>';
+          }
+          h+='</div>';
+        });
+        h+='</div>';
+      }else{
+        h+='<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:8px;color:#999;font-size:13px">🎵 No songs assigned yet</div>';
+      }
+      
+      // Team Section
+      var teamKeys=Object.keys(teamByInst);
+      if(teamKeys.length){
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">👥 Team for this service</b>';
+        teamKeys.forEach(function(ins){
+          h+='<div style="margin-top:8px;font-size:13px">'+
+            '<span style="color:#999;font-size:12px">'+ins+':</span> '+
+            teamByInst[ins].join(", ")+'</div>';
+        });
+        h+='</div>';
+      }
+      
+      h+='</div>'; // end card
     });
-    if(!found) h='<h2>Your Services</h2><div class="card" style="text-align:center;color:#999">No services assigned yet</div>';
+    
+    if(!found){
+      h='<h2>📅 Your Services</h2><div class="card" style="text-align:center;color:#999;padding:30px">No services assigned yet</div>';
+    }
     render(h);
   });
 }
