@@ -394,13 +394,45 @@ function showPlan(){
   });
 }
 function addSvc(){
-  var d=document.getElementById("sd").value;
-  if(!d){alert("Pick a date");return;}
-  var id="s_"+Math.random().toString(36).substr(2,9);
-  ref.child("services/"+id).set({
-    name:document.getElementById("st").value,
-    date:d,time:document.getElementById("sm").value,slots:{},songs:{}
-  }).then(showPlan);
+  var d  = document.getElementById("sd").value;
+  var tm = document.getElementById("sm").value;
+  var nm = document.getElementById("st").value;
+  
+  if(!d){ alert("Pick a date"); return; }
+  
+  // Check for duplicate: same date + same time
+  ref.child("services").once("value").then(function(snap){
+    var svcs = snap.val()||{};
+    var duplicate = false;
+    var dupName = "";
+    
+    for(var k in svcs){
+      if(svcs[k].date === d && svcs[k].time === tm){
+        duplicate = true;
+        dupName = svcs[k].name;
+        break;
+      }
+    }
+    
+    if(duplicate){
+      alert("⚠️ A service already exists on " + d + " at " + tm + "\n\n\"" + dupName + "\" is already scheduled at that time.\n\nPlease choose a different date or time.");
+      return;
+    }
+    
+    // No duplicate — save
+    var id = "s_" + Math.random().toString(36).substr(2,9);
+    ref.child("services/"+id).set({
+      name: nm,
+      date: d,
+      time: tm,
+      slots: {},
+      songs: {}
+    }).then(function(){
+      // Clear the form fields
+      document.getElementById("sd").value = "";
+      showPlan();
+    });
+  });
 }
 function editSvc(id){
   setNav(adminTabs());
