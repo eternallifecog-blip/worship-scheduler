@@ -408,11 +408,55 @@ function editSvc(id){
   ref.child("services/"+id).once("value").then(function(ss){
     var s=ss.val(); if(!s) return showPlan();
     ref.child("users").once("value").then(function(us){
-      var users={},ud=us.val()||{};
-      for(var k in ud){if(ud[k].status==="approved") users[k]=ud[k];}
-      var h='<div class="card"><h2>'+s.name+'</h2><small style="color:#999">'+s.date+' at '+s.time+'</small>';
+      var users={}, ud=us.val()||{};
+      for(var k in ud){ if(ud[k].status==="approved") users[k]=ud[k]; }
+      
+      var svcDate = s.date; // e.g. "2026-10-05"
+      
+      // Build availability map: uid -> true (available) / false (off)
+      var avail={};
+      for(var k in users){
+        var offDays = users[k].off||{};
+        avail[k] = !offDays[svcDate]; // true = available
+      }
+      
+      // Count available per instrument
+      var availCount={};
+      INST.forEach(function(ins){
+        availCount[ins]=0;
+        for(var k in users){
+          if(users[k].inst&&users[k].inst.indexOf(ins)>=0&&avail[k]) availCount[ins]++;
+        }
+      });
+      
+      var h='<div class="card">';
+      
+      // Service header
+      h+='<h2>'+s.name+'</h2>';
+      h+='<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small>';
+      
+      // Availability summary bar
+      h+='<div style="margin:14px 0;padding:12px;background:var(--bg);border-radius:8px">'+
+        '<b style="font-size:13px">👥 Availability on '+s.date+'</b>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">';
+      INST.forEach(function(ins){
+        var assigned = s.slots&&s.slots[ins] ? Object.keys(s.slots[ins]).length : 0;
+        var total = 0;
+        for(var k in users){ if(users[k].inst&&users[k].inst.indexOf(ins)>=0) total++; }
+        var avl = availCount[ins];
+        var color = avl===0 ? '#c62828' : avl<2 ? '#e65100' : '#2e7d32';
+        h+='<div style="background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px 12px;text-align:center;min-width:100px">'+
+          '<div style="font-size:11px;color:#999;margin-bottom:2px">'+ins+'</div>'+
+          '<div style="font-size:18px;font-weight:bold;color:'+color+'">'+avl+'<span style="font-size:12px;font-weight:normal;color:#999">/'+total+'</span></div>'+
+          '<div style="font-size:10px;color:#999">available</div>'+
+          (assigned?'<div style="font-size:10px;color:var(--accent)">'+assigned+' assigned</div>':'')+
+          '</div>';
+      });
+      h+='</div></div>';
+      
+      // Songs assigned to this service
       if(s.songs&&Object.keys(s.songs).length){
-        h+='<div style="margin:12px 0"><label><b>🎵 Songs</b></label>';
+        h+='<div style="margin-bottom:14px"><label><b>🎵 Songs</b></label>';
         for(var sk in s.songs){
           h+='<div style="background:var(--bg);padding:6px 10px;border-radius:4px;margin:4px 0;font-size:13px;display:flex;justify-content:space-between;align-items:center">'+
             '<span>🎵 '+s.songs[sk]+'</span>'+
@@ -420,23 +464,71 @@ function editSvc(id){
         }
         h+='</div>';
       }
+      
+      // Per-instrument assignment with availability indicators
       INST.forEach(function(ins){
-        var assigned=s.slots&&s.slots[ins]?s.slots[ins]:{};
-        h+='<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:6px"><label style="margin:0"><b>'+ins+'</b></label>';
-        for(var uid in assigned){
-          if(users[uid]){
-            h+='<div style="background:var(--accent);color:#fff;padding:8px;margin:4px 0;display:flex;justify-content:space-between;align-items:center;border-radius:4px;font-size:13px">'+
-              '<span>✓ '+users[uid].name+'</span>'+
-              '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" onclick="delAssign(\''+id+'\',\''+ins+'\',\''+uid+'\')">Remove</button></div>';
+        var assigned = s.slots&&s.slots[ins] ? s.slots[ins] : {};
+        var assignedCount = Object.keys(assigned).length;
+        
+        h+='<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px">';
+        h+='<label style="margin:0 0 8px 0"><b>'+ins+'</b></label>';
+        
+        // Already assigned members
+        for(var aid in assigned){
+          if(users[aid]){
+            h+='<div style="background:var(--accent);color:#fff;padding:8px 10px;margin:4px 0;display:flex;justify-content:space-between;align-items:center;border-radius:6px;font-size:13px">'+
+              '<span>✓ '+users[aid].name+'</span>'+
+              '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" onclick="delAssign(\''+id+'\',\''+ins+'\',\''+aid+'\')">Remove</button></div>';
           }
         }
-        h+='<select onchange="addAssign(\''+id+'\',\''+ins+'\',this.value);this.value=\'\'"><option value="">+ Add '+ins+'...</option>';
+        
+        // Available members for this instrument (not yet assigned)
+        var availMembers=[], unavailMembers=[];
         for(var k in users){
           var u=users[k];
-          if(u.inst&&u.inst.indexOf(ins)>=0&&!(assigned&&assigned[k])) h+='<option value="'+k+'">'+u.name+'</option>';
+          if(u.inst&&u.inst.indexOf(ins)>=0&&!(assigned&&assigned[k])){
+            if(avail[k]) availMembers.push({id:k,name:u.name});
+            else unavailMembers.push({id:k,name:u.name});
+          }
         }
-        h+='</select></div>';
+        
+        // Show available members as green chips (clickable to assign)
+        if(availMembers.length){
+          h+='<div style="margin-top:8px">';
+          h+='<div style="font-size:11px;color:#2e7d32;margin-bottom:4px">✅ Available (tap to assign)</div>';
+          availMembers.forEach(function(m){
+            h+='<span onclick="addAssign(\''+id+'\',\''+ins+'\',\''+m.id+'\')" '+
+              'style="display:inline-block;margin:3px;padding:6px 12px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:20px;font-size:13px;cursor:pointer">'+
+              '+ '+m.name+'</span>';
+          });
+          h+='</div>';
+        }
+        
+        // Show unavailable members as red chips (greyed out, still assignable via dropdown)
+        if(unavailMembers.length){
+          h+='<div style="margin-top:8px">';
+          h+='<div style="font-size:11px;color:#c62828;margin-bottom:4px">❌ Off / Unavailable</div>';
+          unavailMembers.forEach(function(m){
+            h+='<span style="display:inline-block;margin:3px;padding:6px 12px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:20px;font-size:13px;text-decoration:line-through;opacity:0.7">'+
+              m.name+'</span>';
+          });
+          h+='<div style="font-size:11px;color:#999;margin-top:4px">Override: '+
+            '<select onchange="addAssign(\''+id+'\',\''+ins+'\',this.value);this.value=\'\'" style="width:auto;display:inline;padding:4px;font-size:12px;margin:0 0 0 4px">'+
+            '<option value="">assign anyway...</option>';
+          unavailMembers.forEach(function(m){
+            h+='<option value="'+m.id+'">'+m.name+'</option>';
+          });
+          h+='</select></div>';
+          h+='</div>';
+        }
+        
+        if(!availMembers.length&&!unavailMembers.length){
+          h+='<div style="font-size:12px;color:#999;padding:6px">No members play '+ins+'</div>';
+        }
+        
+        h+='</div>'; // end instrument block
       });
+      
       h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px">'+
         '<button onclick="editSvcSongs(\''+id+'\')">🎵 Assign Songs</button>'+
         '<button class="sec" onclick="showPlan()">← Back</button></div></div>';
