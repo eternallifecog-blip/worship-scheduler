@@ -43,6 +43,7 @@ nav button{margin:0;padding:8px 12px;width:auto;font-size:13px}
 
 <script async defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script async defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>
 var db, ref;
 var fbReady = false;
@@ -50,6 +51,13 @@ var tab = "home";
 var selDays = {};
 var INST = ["Drums","Vocals","Bass Guitar","Acoustic Guitar","Piano"];
 var KEYS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+// ── EmailJS config (admin fills these in Settings tab) ──
+// Get free account at https://www.emailjs.com
+// Store in Firebase so admin can set via UI
+var EJS = { ready: false };
+function initEmailJS(pubKey){ if(pubKey){ emailjs.init(pubKey); EJS.ready=true; } }
+
 var FB = {
   apiKey:"AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
   authDomain:"elc-worship-schedule.firebaseapp.com",
@@ -115,6 +123,7 @@ function goTab(t){
 }
 
 function start(){
+  checkRsvpFromUrl();
   setHeader();
   if(!uid()){showLogin();return;}
   if(!uinst()){showInst();return;}
@@ -126,10 +135,11 @@ function start(){
   else if(tab==="avail") showAvail();
   else if(tab==="chat") showChat();
   else if(tab==="team") showTeam();
+  else if(tab==="settings") showSettings();
   else showHome();
 }
 
-function adminTabs(){return[["home","Home"],["manage","👥 Users"],["plan","Plan"],["songs","Songs"],["chat","Chat"],["team","Team"],["logout","Logout"]]}
+function adminTabs(){return[["home","Home"],["manage","👥 Users"],["plan","Plan"],["songs","Songs"],["chat","Chat"],["team","Team"],["settings","⚙️"],["logout","Logout"]]}
 function memberTabs(){return[["home","Home"],["my","Services"],["songs","Songs"],["avail","Off"],["chat","Chat"],["logout","Logout"]]}
 
 function logout(){sessionStorage.clear();tab="home";start();}
@@ -486,10 +496,24 @@ function editSvc(id){
       });
       
       var h='<div class="card">';
-      
+
       // Service header
       h+='<h2>'+s.name+'</h2>';
       h+='<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small>';
+
+      // RSVP summary
+      var rsvpData = s.rsvp||{};
+      var rsvpAccepted=[], rsvpDenied=[], rsvpPending=[];
+      for(var ins2 in (s.slots||{})){
+        for(var uid2 in s.slots[ins2]){
+          if(!users[uid2]) continue;
+          var st=rsvpData[uid2]||"pending";
+          var nm2=users[uid2].name+" ("+ins2+")";
+          if(st==="accepted") rsvpAccepted.push(nm2);
+          else if(st==="denied") rsvpDenied.push(nm2);
+          else rsvpPending.push(nm2);
+        }
+      }
       
       // Availability summary bar
       h+='<div style="margin:14px 0;padding:12px;background:var(--bg);border-radius:8px">'+
@@ -510,6 +534,28 @@ function editSvc(id){
       });
       h+='</div></div>';
       
+      // RSVP summary panel
+      if(rsvpAccepted.length||rsvpDenied.length||rsvpPending.length){
+        h+='<div style="margin:0 0 14px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">📬 RSVP Status</b>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">'+
+          '<div style="background:#e8f5e9;padding:8px;border-radius:6px;border-left:3px solid #28a745">'+
+            '<div style="font-size:11px;font-weight:bold;color:#2e7d32">✅ ACCEPTED ('+rsvpAccepted.length+')</div>'+
+            rsvpAccepted.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
+            (!rsvpAccepted.length?'<div style="font-size:12px;color:#999">—</div>':'')+
+          '</div>'+
+          '<div style="background:#ffebee;padding:8px;border-radius:6px;border-left:3px solid #c62828">'+
+            '<div style="font-size:11px;font-weight:bold;color:#c62828">❌ DECLINED ('+rsvpDenied.length+')</div>'+
+            rsvpDenied.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
+            (!rsvpDenied.length?'<div style="font-size:12px;color:#999">—</div>':'')+
+          '</div>'+
+          '<div style="background:#fff3e0;padding:8px;border-radius:6px;border-left:3px solid #ff9800">'+
+            '<div style="font-size:11px;font-weight:bold;color:#e65100">⏳ PENDING ('+rsvpPending.length+')</div>'+
+            rsvpPending.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
+            (!rsvpPending.length?'<div style="font-size:12px;color:#999">—</div>':'')+
+          '</div></div></div>';
+      }
+
       // Songs assigned to this service
       if(s.songs&&Object.keys(s.songs).length){
         h+='<div style="margin-bottom:14px"><label><b>🎵 Songs</b></label>';
@@ -532,8 +578,14 @@ function editSvc(id){
         // Already assigned members
         for(var aid in assigned){
           if(users[aid]){
+            var memberRsvp = rsvpData[aid]||"pending";
+            var rBadge = memberRsvp==="accepted"
+              ? '<span style="font-size:10px;background:#28a745;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">✅ Accepted</span>'
+              : memberRsvp==="denied"
+              ? '<span style="font-size:10px;background:#c62828;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">❌ Declined</span>'
+              : '<span style="font-size:10px;background:#ff9800;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">⏳ Pending</span>';
             h+='<div style="background:var(--accent);color:#fff;padding:8px 10px;margin:4px 0;display:flex;justify-content:space-between;align-items:center;border-radius:6px;font-size:13px">'+
-              '<span>✓ '+users[aid].name+'</span>'+
+              '<span>✓ '+users[aid].name+rBadge+'</span>'+
               '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" onclick="delAssign(\''+id+'\',\''+ins+'\',\''+aid+'\')">Remove</button></div>';
           }
         }
@@ -592,13 +644,239 @@ function editSvc(id){
     });
   });
 }
-function addAssign(sid,ins,uid){
-  if(!uid) return;
-  ref.child("services/"+sid+"/slots/"+ins+"/"+uid).set(true).then(function(){setTimeout(function(){editSvc(sid);},300);});
+function addAssign(sid,ins,memberId){
+  if(!memberId) return;
+  // Save assignment + pending RSVP status
+  Promise.all([
+    ref.child("services/"+sid+"/slots/"+ins+"/"+memberId).set(true),
+    ref.child("services/"+sid+"/rsvp/"+memberId).set("pending")
+  ]).then(function(){
+    // Send email notification to the member
+    sendAssignmentEmail(sid, ins, memberId);
+    setTimeout(function(){editSvc(sid);},400);
+  });
 }
-function delAssign(sid,ins,uid){
-  ref.child("services/"+sid+"/slots/"+ins+"/"+uid).remove().then(function(){editSvc(sid);});
+function delAssign(sid,ins,memberId){
+  ref.child("services/"+sid+"/slots/"+ins+"/"+memberId).remove();
+  ref.child("services/"+sid+"/rsvp/"+memberId).remove().then(function(){editSvc(sid);});
 }
+
+// ── Send assignment email to member ──
+function sendAssignmentEmail(sid, ins, memberId){
+  Promise.all([
+    ref.child("services/"+sid).once("value"),
+    ref.child("users").once("value"),
+    ref.child("settings/emailjs").once("value")
+  ]).then(function(res){
+    var svc    = res[0].val(); if(!svc) return;
+    var users  = res[1].val()||{};
+    var ejsCfg = res[2].val()||{};
+
+    if(!ejsCfg.publicKey||!ejsCfg.serviceId||!ejsCfg.templateIdMember){
+      console.log("EmailJS not configured — skipping email");
+      return;
+    }
+
+    var member = users[memberId]; if(!member||!member.email) return;
+
+    // Build full team list for email
+    var teamLines=[];
+    for(var i in (svc.slots||{})){
+      for(var uid in svc.slots[i]){
+        teamLines.push(i+": "+(users[uid]?users[uid].name:"?"));
+      }
+    }
+
+    // Find admin email
+    var adminEmail="";
+    for(var k in users){ if(users[k].role==="admin"){adminEmail=users[k].email;break;} }
+
+    // Build app URL for RSVP links
+    var appUrl = window.location.href.split("?")[0];
+    var acceptUrl = appUrl+"?rsvp=accept&sid="+sid+"&uid="+memberId;
+    var denyUrl   = appUrl+"?rsvp=deny&sid="+sid+"&uid="+memberId;
+
+    initEmailJS(ejsCfg.publicKey);
+
+    emailjs.send(ejsCfg.serviceId, ejsCfg.templateIdMember, {
+      to_email:   member.email,
+      to_name:    member.name,
+      instrument: ins,
+      svc_name:   svc.name,
+      svc_date:   svc.date,
+      svc_time:   svc.time,
+      team_list:  teamLines.join("\n"),
+      accept_url: acceptUrl,
+      deny_url:   denyUrl,
+      admin_email:adminEmail
+    }).then(function(){
+      console.log("✅ Assignment email sent to "+member.name);
+    }).catch(function(e){
+      console.error("Email error:",e);
+    });
+  });
+}
+
+// ── Handle RSVP links (Accept/Deny from email) ──
+function checkRsvpFromUrl(){
+  var params = new URLSearchParams(window.location.search);
+  var rsvp = params.get("rsvp");
+  var sid  = params.get("sid");
+  var muid = params.get("uid");
+  if(!rsvp||!sid||!muid) return;
+
+  // Clean URL
+  window.history.replaceState({},document.title,window.location.pathname);
+
+  var status = (rsvp==="accept") ? "accepted" : "denied";
+
+  Promise.all([
+    ref.child("services/"+sid).once("value"),
+    ref.child("users").once("value"),
+    ref.child("settings/emailjs").once("value")
+  ]).then(function(res){
+    var svc    = res[0].val(); if(!svc) return;
+    var users  = res[1].val()||{};
+    var ejsCfg = res[2].val()||{};
+    var member = users[muid];   if(!member) return;
+
+    // Save RSVP status to Firebase
+    ref.child("services/"+sid+"/rsvp/"+muid).set(status).then(function(){
+      // Show confirmation in app
+      var msg = status==="accepted"
+        ? "✅ You've ACCEPTED the service!\n\n"+svc.name+"\n"+svc.date+" at "+svc.time
+        : "❌ You've DECLINED the service.\n\n"+svc.name+"\n"+svc.date+" at "+svc.time+"\n\nAdmin has been notified.";
+      alert(msg);
+
+      // Send RSVP summary email to admin
+      if(ejsCfg.publicKey&&ejsCfg.serviceId&&ejsCfg.templateIdAdmin){
+        var adminEmail="";
+        for(var k in users){ if(users[k].role==="admin"){adminEmail=users[k].email;break;} }
+        if(!adminEmail) return;
+
+        // Build full RSVP status list
+        var rsvpData = svc.rsvp||{};
+        rsvpData[muid] = status; // include current response
+        var accepted=[], denied=[], pending=[];
+        for(var ins in (svc.slots||{})){
+          for(var uid in svc.slots[ins]){
+            var u=users[uid]; if(!u) continue;
+            var st=rsvpData[uid]||"pending";
+            var line=u.name+" ("+ins+")";
+            if(st==="accepted") accepted.push(line);
+            else if(st==="denied") denied.push(line);
+            else pending.push(line);
+          }
+        }
+
+        initEmailJS(ejsCfg.publicKey);
+        emailjs.send(ejsCfg.serviceId, ejsCfg.templateIdAdmin, {
+          to_email:      adminEmail,
+          member_name:   member.name,
+          rsvp_status:   status.toUpperCase(),
+          svc_name:      svc.name,
+          svc_date:      svc.date,
+          svc_time:      svc.time,
+          accepted_list: accepted.length ? accepted.join("\n") : "None yet",
+          denied_list:   denied.length   ? denied.join("\n")   : "None",
+          pending_list:  pending.length  ? pending.join("\n")  : "None"
+        }).catch(function(e){ console.error("Admin email error:",e); });
+      }
+    });
+  });
+}
+
+// ── Settings tab (admin only) ──
+function showSettings(){
+  setNav(adminTabs());
+  ref.child("settings/emailjs").once("value").then(function(snap){
+    var cfg = snap.val()||{};
+    var h='<h2>⚙️ Settings</h2>'+
+      '<div class="card">'+
+      '<h3>📧 Email Notifications (EmailJS)</h3>'+
+      '<div style="background:#fff3e0;padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px">'+
+      '<b>Setup steps:</b><br>'+
+      '1. Go to <a href="https://www.emailjs.com" target="_blank">emailjs.com</a> → free account<br>'+
+      '2. Add Email Service (Gmail/Outlook) → copy <b>Service ID</b><br>'+
+      '3. Create <b>two templates</b> (see below) → copy Template IDs<br>'+
+      '4. Go to Account → copy <b>Public Key</b><br>'+
+      '5. Paste all below and click Save'+
+      '</div>'+
+
+      '<label>EmailJS Public Key</label>'+
+      '<input id="ejs-pub" placeholder="e.g. user_xxxxxxxxxxxxxxx" value="'+(cfg.publicKey||"")+'">'+
+
+      '<label>Service ID</label>'+
+      '<input id="ejs-svc" placeholder="e.g. service_xxxxxxx" value="'+(cfg.serviceId||"")+'">'+
+
+      '<label>Template ID — Member Notification</label>'+
+      '<input id="ejs-tm" placeholder="e.g. template_member01" value="'+(cfg.templateIdMember||"")+'">'+
+      '<div style="font-size:11px;color:#999;margin:-4px 0 8px">'+
+      'Template variables: {{to_name}}, {{to_email}}, {{instrument}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{team_list}}, {{accept_url}}, {{deny_url}}'+
+      '</div>'+
+
+      '<label>Template ID — Admin RSVP Summary</label>'+
+      '<input id="ejs-ta" placeholder="e.g. template_admin01" value="'+(cfg.templateIdAdmin||"")+'">'+
+      '<div style="font-size:11px;color:#999;margin:-4px 0 8px">'+
+      'Template variables: {{member_name}}, {{rsvp_status}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{accepted_list}}, {{denied_list}}, {{pending_list}}'+
+      '</div>'+
+
+      '<button onclick="saveEmailSettings()" style="margin-top:12px">Save Email Settings</button>'+
+      '<div id="settings-msg" style="margin-top:8px"></div>'+
+      '</div>'+
+
+      '<div class="card">'+
+      '<h3>📋 Template Examples</h3>'+
+      '<details><summary style="cursor:pointer;color:var(--accent)">Member Notification Template</summary>'+
+      '<pre style="font-size:11px;white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:4px;margin-top:8px">'+
+      'Subject: You\'ve been assigned to {{svc_name}}\n\n'+
+      'Hi {{to_name}},\n\n'+
+      'You have been assigned as {{instrument}} for:\n\n'+
+      '📅 Service: {{svc_name}}\n'+
+      '📆 Date: {{svc_date}}\n'+
+      '⏰ Time: {{svc_time}}\n\n'+
+      '👥 Full Team:\n{{team_list}}\n\n'+
+      'Please respond:\n'+
+      '✅ ACCEPT: {{accept_url}}\n'+
+      '❌ DECLINE: {{deny_url}}\n\n'+
+      'God bless,\nWorship Team Admin'+
+      '</pre></details>'+
+      '<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent)">Admin RSVP Summary Template</summary>'+
+      '<pre style="font-size:11px;white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:4px;margin-top:8px">'+
+      'Subject: RSVP Update: {{member_name}} {{rsvp_status}}\n\n'+
+      '{{member_name}} has {{rsvp_status}} for {{svc_name}} on {{svc_date}}.\n\n'+
+      '📊 Current RSVP Status:\n\n'+
+      '✅ Accepted:\n{{accepted_list}}\n\n'+
+      '❌ Declined:\n{{denied_list}}\n\n'+
+      '⏳ Pending:\n{{pending_list}}'+
+      '</pre></details>'+
+      '</div>';
+    render(h);
+  });
+}
+
+function saveEmailSettings(){
+  var pub = (document.getElementById("ejs-pub").value||"").trim();
+  var svc = (document.getElementById("ejs-svc").value||"").trim();
+  var tm  = (document.getElementById("ejs-tm").value||"").trim();
+  var ta  = (document.getElementById("ejs-ta").value||"").trim();
+  var msg = document.getElementById("settings-msg");
+
+  if(!pub||!svc||!tm||!ta){
+    msg.innerHTML='<div class="msg-err">❌ Fill all fields</div>'; return;
+  }
+  msg.innerHTML='<div class="msg-info">⏳ Saving...</div>';
+
+  ref.child("settings/emailjs").set({
+    publicKey:pub, serviceId:svc, templateIdMember:tm, templateIdAdmin:ta
+  }).then(function(){
+    initEmailJS(pub);
+    msg.innerHTML='<div class="msg-ok">✅ Email settings saved!</div>';
+  }).catch(function(e){
+    msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+  });
+}
+
 function editSvcSongs(sid){
   setNav(adminTabs());
   render('<div class="card">Loading...</div>');
@@ -849,10 +1127,9 @@ function showMy(){
   setNav(memberTabs());
   render('<h2>Your Services</h2><div class="card">Loading...</div>');
   if(!fbReady) return;
-  
+
   var me=uid();
-  
-  // Load services AND all users AND all songs in parallel
+
   Promise.all([
     ref.child("services").once("value"),
     ref.child("users").once("value"),
@@ -861,99 +1138,157 @@ function showMy(){
     var svcs  = results[0].val()||{};
     var users = results[1].val()||{};
     var songs = results[2].val()||{};
-    
+
     var h='<h2>📅 Your Services</h2>';
     var found=false;
-    
+
     var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
-    
+
     keys.forEach(function(k){
       var s=svcs[k];
       if(!s.slots) return;
-      
-      // Find which instrument this member plays in this service
+
       var myInst=[];
       for(var ins in s.slots){
         if(s.slots[ins]&&s.slots[ins][me]) myInst.push(ins);
       }
       if(!myInst.length) return;
-      
+
       found=true;
-      
-      // Build team list for this service
+
+      // RSVP status
+      var rsvpStatus = (s.rsvp&&s.rsvp[me]) ? s.rsvp[me] : "pending";
+      var rsvpColor  = rsvpStatus==="accepted"?"#2e7d32":rsvpStatus==="denied"?"#c62828":"#e65100";
+      var rsvpLabel  = rsvpStatus==="accepted"?"✅ Accepted":rsvpStatus==="denied"?"❌ Declined":"⏳ Pending Response";
+
+      // Team list
       var teamByInst={};
       for(var ins in s.slots){
-        var playerIds=Object.keys(s.slots[ins]||{});
-        if(playerIds.length){
-          teamByInst[ins]=playerIds.map(function(pid){
-            return users[pid]?users[pid].name:"Unknown";
-          });
-        }
+        var pids=Object.keys(s.slots[ins]||{});
+        if(pids.length) teamByInst[ins]=pids.map(function(pid){return users[pid]?users[pid].name:"?";});
       }
-      
-      // Build songs list
+
+      // Songs
       var svcSongs=s.songs?Object.keys(s.songs).map(function(sk){
-        var songTitle=s.songs[sk];
-        var songData=songs[sk];
-        return {id:sk, title:songTitle, data:songData};
+        return {id:sk,title:s.songs[sk],data:songs[sk]};
       }):[];
-      
+
       h+='<div class="card">';
-      
-      // Header
-      h+='<div style="display:flex;justify-content:space-between;align-items:start">'+
+
+      // Header + RSVP badge
+      h+='<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px">'+
         '<div>'+
         '<b style="font-size:16px">'+s.name+'</b><br>'+
         '<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small>'+
         '</div>'+
-        '<div style="text-align:right">'+
-        myInst.map(function(i){return'<span style="display:inline-block;background:var(--accent);color:#fff;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:bold">'+i+'</span>';}).join(' ')+
-        '</div></div>';
-      
-      // Songs Section
+        '<span style="background:'+rsvpColor+';color:#fff;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:bold;white-space:nowrap">'+rsvpLabel+'</span>'+
+        '</div>';
+
+      // Instrument badge
+      h+='<div style="margin-bottom:10px">'+
+        myInst.map(function(i){return'<span style="display:inline-block;background:var(--accent);color:#fff;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:bold;margin-right:4px">'+i+'</span>';}).join('')+
+        '</div>';
+
+      // RSVP buttons if pending
+      if(rsvpStatus==="pending"){
+        h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;padding:12px;background:#fff3e0;border-radius:8px">'+
+          '<div style="grid-column:1/3;font-size:13px;font-weight:bold;color:#e65100;margin-bottom:4px">Please respond to this assignment:</div>'+
+          '<button onclick="rsvpService(\''+k+'\',\'accepted\')" style="background:#28a745;margin:0;padding:12px">✅ Accept</button>'+
+          '<button onclick="rsvpService(\''+k+'\',\'denied\')" style="background:#c23b22;margin:0;padding:12px">❌ Decline</button>'+
+          '</div>';
+      } else {
+        h+='<div style="margin:8px 0">'+
+          '<button class="sec" onclick="rsvpService(\''+k+'\',\''+(rsvpStatus==="accepted"?"denied":"accepted")+'\')" style="padding:8px;font-size:12px">'+
+          (rsvpStatus==="accepted"?"Change to ❌ Decline":"Change to ✅ Accept")+
+          '</button></div>';
+      }
+
+      // Songs
       if(svcSongs.length){
-        h+='<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px">'+
-          '<b style="font-size:13px">🎵 Songs for this service</b>';
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">🎵 Songs</b>';
         svcSongs.forEach(function(sg){
           h+='<div style="margin-top:10px;padding:10px;background:var(--card);border-radius:6px;border-left:3px solid var(--accent)">'+
             '<b>'+sg.title+'</b>';
           if(sg.data){
-            if(sg.data.key) h+='<span style="margin-left:10px;font-size:12px;color:#999">Key: <b style="color:var(--ink)">'+sg.data.key+'</b></span>';
+            if(sg.data.key) h+='<span style="margin-left:10px;font-size:12px;color:#999">Key: <b>'+sg.data.key+'</b></span>';
             if(sg.data.notes) h+='<span style="margin-left:10px;font-size:12px;color:#999">'+sg.data.notes+'</span>';
-            if(sg.data.chords) h+='<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">🎸 Chords</summary>'+
-              '<pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.chords+'</pre></details>';
-            if(sg.data.numberChart) h+='<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">🔢 Number Chart</summary>'+
-              '<pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.numberChart+'</pre></details>';
-            if(sg.data.lyrics) h+='<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">📝 Lyrics</summary>'+
-              '<pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.lyrics+'</pre></details>';
+            if(sg.data.chords) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">🎸 Chords</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.data.chords+'</pre></details>';
+            if(sg.data.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">🔢 Number Chart</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.data.numberChart+'</pre></details>';
+            if(sg.data.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">📝 Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.data.lyrics+'</pre></details>';
           }
           h+='</div>';
         });
         h+='</div>';
-      }else{
-        h+='<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:8px;color:#999;font-size:13px">🎵 No songs assigned yet</div>';
       }
-      
-      // Team Section
+
+      // Team
       var teamKeys=Object.keys(teamByInst);
       if(teamKeys.length){
         h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
-          '<b style="font-size:13px">👥 Team for this service</b>';
+          '<b style="font-size:13px">👥 Team</b>';
         teamKeys.forEach(function(ins){
-          h+='<div style="margin-top:8px;font-size:13px">'+
-            '<span style="color:#999;font-size:12px">'+ins+':</span> '+
-            teamByInst[ins].join(", ")+'</div>';
+          h+='<div style="margin-top:6px;font-size:13px"><span style="color:#999;font-size:12px">'+ins+':</span> '+teamByInst[ins].join(", ")+'</div>';
         });
         h+='</div>';
       }
-      
-      h+='</div>'; // end card
+
+      h+='</div>';
     });
-    
-    if(!found){
-      h='<h2>📅 Your Services</h2><div class="card" style="text-align:center;color:#999;padding:30px">No services assigned yet</div>';
-    }
+
+    if(!found) h='<h2>📅 Your Services</h2><div class="card" style="text-align:center;color:#999;padding:30px">No services assigned yet</div>';
     render(h);
+  });
+}
+
+function rsvpService(sid, status){
+  var me=uid();
+  ref.child("services/"+sid+"/rsvp/"+me).set(status).then(function(){
+    // Send RSVP notification to admin
+    Promise.all([
+      ref.child("services/"+sid).once("value"),
+      ref.child("users").once("value"),
+      ref.child("settings/emailjs").once("value")
+    ]).then(function(res){
+      var svc    = res[0].val()||{};
+      var users  = res[1].val()||{};
+      var ejsCfg = res[2].val()||{};
+      var member = users[me];
+
+      if(ejsCfg.publicKey&&ejsCfg.serviceId&&ejsCfg.templateIdAdmin&&member){
+        var adminEmail="";
+        for(var k in users){ if(users[k].role==="admin"){adminEmail=users[k].email;break;} }
+
+        if(adminEmail){
+          var rsvpData=svc.rsvp||{};
+          rsvpData[me]=status;
+          var accepted=[],denied=[],pending=[];
+          for(var ins in (svc.slots||{})){
+            for(var uid in svc.slots[ins]){
+              var u=users[uid]; if(!u) continue;
+              var st=rsvpData[uid]||"pending";
+              var line=u.name+" ("+ins+")";
+              if(st==="accepted") accepted.push(line);
+              else if(st==="denied") denied.push(line);
+              else pending.push(line);
+            }
+          }
+          initEmailJS(ejsCfg.publicKey);
+          emailjs.send(ejsCfg.serviceId, ejsCfg.templateIdAdmin,{
+            to_email:     adminEmail,
+            member_name:  member.name,
+            rsvp_status:  status.toUpperCase(),
+            svc_name:     svc.name,
+            svc_date:     svc.date,
+            svc_time:     svc.time,
+            accepted_list:accepted.length?accepted.join("\n"):"None yet",
+            denied_list:  denied.length?denied.join("\n"):"None",
+            pending_list: pending.length?pending.join("\n"):"None"
+          }).catch(function(e){console.error("RSVP email error:",e);});
+        }
+      }
+    });
+    showMy();
   });
 }
 
