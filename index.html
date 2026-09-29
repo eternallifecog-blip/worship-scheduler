@@ -49,7 +49,7 @@ var db, ref;
 var fbReady = false;
 var tab = "home";
 var selDays = {};
-var INST = ["Drums","Vocals","Bass Guitar","Acoustic Guitar","Piano"];
+var INST = ["Drums","Vocals","Bass Guitar","Acoustic Guitar","Piano","Media","Sound"];
 var KEYS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
 // ── EmailJS config (admin fills these in Settings tab) ──
@@ -81,10 +81,17 @@ var tries=0, timer=setInterval(function(){
       db.ref(".info/connected").on("value",function(s){
         document.getElementById("synctxt").textContent=s.val()?"✓ Connected":"✗ Offline";
       });
+      // Load custom instruments from Firebase (if set by admin)
+      ref.child("settings/instruments").once("value").then(function(snap){
+        if(snap.val()&&Array.isArray(snap.val())&&snap.val().length>0){
+          INST=snap.val();
+        }
+        start();
+      }).catch(function(){ start(); });
     }catch(e){
       document.getElementById("synctxt").textContent="✗ "+e.message;
+      start();
     }
-    start();
   }else if(tries>40){
     clearInterval(timer);
     document.getElementById("synctxt").textContent="✗ Firebase failed";
@@ -789,10 +796,41 @@ function checkRsvpFromUrl(){
 // ── Settings tab (admin only) ──
 function showSettings(){
   setNav(adminTabs());
-  ref.child("settings/emailjs").once("value").then(function(snap){
-    var cfg = snap.val()||{};
-    var h='<h2>⚙️ Settings</h2>'+
-      '<div class="card">'+
+
+  // Load both email config and instruments together
+  Promise.all([
+    ref.child("settings/emailjs").once("value"),
+    ref.child("settings/instruments").once("value")
+  ]).then(function(res){
+    var cfg  = res[0].val()||{};
+    var inst = res[1].val()&&Array.isArray(res[1].val()) ? res[1].val() : INST;
+
+    var h='<h2>⚙️ Settings</h2>';
+
+    /* ── Instruments & Roles ── */
+    h+='<div class="card">'+
+      '<h3>🎸 Instruments & Roles</h3>'+
+      '<p style="color:#999;font-size:13px;margin-top:0">These appear when members pick their role and when admin assigns the team.</p>'+
+      '<div id="inst-list">';
+
+    inst.forEach(function(name, i){
+      h+='<div style="display:flex;align-items:center;gap:8px;margin:6px 0">'+
+        '<input value="'+name+'" id="inst-'+i+'" style="flex:1;margin:0">'+
+        '<button onclick="removeInst('+i+')" style="width:36px;height:36px;padding:0;margin:0;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:6px;flex-shrink:0">✕</button>'+
+        '</div>';
+    });
+
+    h+='</div>'+
+      '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px">'+
+      '<input id="new-inst" placeholder="Add new instrument or role..." style="margin:0">'+
+      '<button onclick="addInstField()" style="width:auto;padding:10px 16px;margin:0">+ Add</button>'+
+      '</div>'+
+      '<button onclick="saveInstruments()" style="margin-top:12px;background:#28a745">💾 Save Instruments & Roles</button>'+
+      '<div id="inst-msg" style="margin-top:8px"></div>'+
+      '</div>';
+
+    /* ── EmailJS ── */
+    h+='<div class="card">'+
       '<h3>📧 Email Notifications (EmailJS)</h3>'+
       '<div style="background:#fff3e0;padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px">'+
       '<b>Setup steps:</b><br>'+
@@ -802,31 +840,26 @@ function showSettings(){
       '4. Go to Account → copy <b>Public Key</b><br>'+
       '5. Paste all below and click Save'+
       '</div>'+
-
       '<label>EmailJS Public Key</label>'+
       '<input id="ejs-pub" placeholder="e.g. user_xxxxxxxxxxxxxxx" value="'+(cfg.publicKey||"")+'">'+
-
       '<label>Service ID</label>'+
       '<input id="ejs-svc" placeholder="e.g. service_xxxxxxx" value="'+(cfg.serviceId||"")+'">'+
-
       '<label>Template ID — Member Notification</label>'+
       '<input id="ejs-tm" placeholder="e.g. template_member01" value="'+(cfg.templateIdMember||"")+'">'+
       '<div style="font-size:11px;color:#999;margin:-4px 0 8px">'+
-      'Template variables: {{to_name}}, {{to_email}}, {{instrument}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{team_list}}, {{accept_url}}, {{deny_url}}'+
+      'Variables: {{to_name}}, {{to_email}}, {{instrument}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{team_list}}, {{accept_url}}, {{deny_url}}'+
       '</div>'+
-
       '<label>Template ID — Admin RSVP Summary</label>'+
       '<input id="ejs-ta" placeholder="e.g. template_admin01" value="'+(cfg.templateIdAdmin||"")+'">'+
       '<div style="font-size:11px;color:#999;margin:-4px 0 8px">'+
-      'Template variables: {{member_name}}, {{rsvp_status}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{accepted_list}}, {{denied_list}}, {{pending_list}}'+
+      'Variables: {{member_name}}, {{rsvp_status}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{accepted_list}}, {{denied_list}}, {{pending_list}}'+
       '</div>'+
-
       '<button onclick="saveEmailSettings()" style="margin-top:12px">Save Email Settings</button>'+
       '<div id="settings-msg" style="margin-top:8px"></div>'+
       '</div>'+
 
       '<div class="card">'+
-      '<h3>📋 Template Examples</h3>'+
+      '<h3>📋 Email Template Examples</h3>'+
       '<details><summary style="cursor:pointer;color:var(--accent)">Member Notification Template</summary>'+
       '<pre style="font-size:11px;white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:4px;margin-top:8px">'+
       'Subject: You\'ve been assigned to {{svc_name}}\n\n'+
@@ -845,15 +878,70 @@ function showSettings(){
       '<pre style="font-size:11px;white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:4px;margin-top:8px">'+
       'Subject: RSVP Update: {{member_name}} {{rsvp_status}}\n\n'+
       '{{member_name}} has {{rsvp_status}} for {{svc_name}} on {{svc_date}}.\n\n'+
-      '📊 Current RSVP Status:\n\n'+
       '✅ Accepted:\n{{accepted_list}}\n\n'+
       '❌ Declined:\n{{denied_list}}\n\n'+
       '⏳ Pending:\n{{pending_list}}'+
       '</pre></details>'+
       '</div>';
+
     render(h);
+    // store current list in JS for remove/add operations
+    window._currentInst = inst.slice();
   });
 }
+
+function addInstField(){
+  var val=(document.getElementById("new-inst").value||"").trim();
+  if(!val) return;
+  window._currentInst = getCurrentInstList();
+  if(window._currentInst.indexOf(val)>=0){
+    alert("\""+val+"\" already exists"); return;
+  }
+  window._currentInst.push(val);
+  document.getElementById("new-inst").value="";
+  rebuildInstList();
+}
+
+function removeInst(i){
+  window._currentInst = getCurrentInstList();
+  var name = window._currentInst[i];
+  if(!confirm('Remove "'+name+'"?\n\nNote: members already assigned this role keep it in their profile until they update it.')) return;
+  window._currentInst.splice(i,1);
+  rebuildInstList();
+}
+
+function getCurrentInstList(){
+  var list=[];
+  var rows=document.querySelectorAll("#inst-list input");
+  rows.forEach(function(el){ var v=(el.value||"").trim(); if(v) list.push(v); });
+  return list;
+}
+
+function rebuildInstList(){
+  var inst=window._currentInst;
+  var html="";
+  inst.forEach(function(name,i){
+    html+='<div style="display:flex;align-items:center;gap:8px;margin:6px 0">'+
+      '<input value="'+name+'" id="inst-'+i+'" style="flex:1;margin:0">'+
+      '<button onclick="removeInst('+i+')" style="width:36px;height:36px;padding:0;margin:0;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:6px;flex-shrink:0">✕</button>'+
+      '</div>';
+  });
+  document.getElementById("inst-list").innerHTML=html;
+}
+
+function saveInstruments(){
+  var list=getCurrentInstList();
+  if(!list.length){ alert("Add at least one instrument"); return; }
+  var msg=document.getElementById("inst-msg");
+  msg.innerHTML='<div class="msg-info">⏳ Saving...</div>';
+  ref.child("settings/instruments").set(list).then(function(){
+    INST=list; // update live in this session
+    msg.innerHTML='<div class="msg-ok">✅ Saved! Members will see updated list on next login.</div>';
+  }).catch(function(e){
+    msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+  });
+}
+
 
 function saveEmailSettings(){
   var pub = (document.getElementById("ejs-pub").value||"").trim();
