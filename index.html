@@ -143,11 +143,12 @@ function start(){
   else if(tab==="chat") showChat();
   else if(tab==="team") showTeam();
   else if(tab==="settings") showSettings();
+  else if(tab==="profile") showProfile();
   else showHome();
 }
 
-function adminTabs(){return[["home","Home"],["manage","👥 Users"],["plan","Plan"],["songs","Songs"],["chat","Chat"],["team","Team"],["settings","⚙️"],["logout","Logout"]]}
-function memberTabs(){return[["home","Home"],["my","Services"],["songs","Songs"],["avail","Off"],["chat","Chat"],["logout","Logout"]]}
+function adminTabs(){return[["home","Home"],["manage","👥 Users"],["plan","Plan"],["songs","Songs"],["chat","Chat"],["team","Team"],["settings","⚙️"],["profile","👤"],["logout","Logout"]]}
+function memberTabs(){return[["home","Home"],["my","Services"],["songs","Songs"],["avail","Off"],["chat","Chat"],["profile","👤"],["logout","Logout"]]}
 
 function logout(){sessionStorage.clear();tab="home";start();}
 
@@ -1483,6 +1484,150 @@ function showTeam(){
     render(h);
   });
 }
+
+/* ===== PROFILE ===== */
+function showProfile(){
+  setNav(isAdmin()?adminTabs():memberTabs());
+  render('<div class="card">Loading profile...</div>');
+  if(!fbReady) return;
+
+  var me = uid();
+
+  Promise.all([
+    ref.child("users/"+me).once("value"),
+    ref.child("settings/instruments").once("value")
+  ]).then(function(res){
+    var u    = res[0].val()||{};
+    var inst = res[1].val()&&Array.isArray(res[1].val()) ? res[1].val() : INST;
+    var sel  = u.inst||[];
+
+    var roleIcon = u.role==="admin"?"👑":u.role==="co-admin"?"⭐":"👤";
+
+    var h='<h2>'+roleIcon+' My Profile</h2>';
+
+    h+='<div class="card">'+
+      '<h3 style="margin-top:0">📋 Account Details</h3>'+
+      '<label>Full Name</label>'+
+      '<input id="p-name" value="'+( u.name||"")+'" placeholder="Full Name">'+
+      '<label>Email Address</label>'+
+      '<input id="p-email" type="email" value="'+(u.email||"")+'" placeholder="Email">'+
+      '<label>Phone Number</label>'+
+      '<input id="p-phone" type="tel" value="'+(u.phone||"")+'" placeholder="Phone">'+
+      '<label>Current Password <span style="font-weight:normal;color:#999">(required to save changes)</span></label>'+
+      '<input id="p-curpw" type="password" placeholder="Enter current password">'+
+      '<label>New Password <span style="font-weight:normal;color:#999">(leave blank to keep current)</span></label>'+
+      '<input id="p-newpw" type="password" placeholder="New password (4+ chars)">'+
+      '<label>Confirm New Password</label>'+
+      '<input id="p-confpw" type="password" placeholder="Repeat new password">'+
+      '<button onclick="saveProfile()" style="margin-top:14px">💾 Save Changes</button>'+
+      '<div id="profile-msg" style="margin-top:8px"></div>'+
+      '</div>';
+
+    h+='<div class="card">'+
+      '<h3 style="margin-top:0">🎸 My Instruments & Roles</h3>'+
+      '<p style="color:#999;font-size:13px;margin-top:0">Tap to select/deselect. Click Save below when done.</p>'+
+      '<div id="inst-chips">';
+
+    inst.forEach(function(n){
+      var on = sel.indexOf(n)>=0;
+      h+='<span class="chip'+(on?" on":"")+'" onclick="tglProfileInst(\''+ n +'\')">'+n+'</span>';
+    });
+
+    h+='</div>'+
+      '<button onclick="saveProfileInst()" style="margin-top:16px;background:#28a745">💾 Save Instruments</button>'+
+      '<div id="inst-profile-msg" style="margin-top:8px"></div>'+
+      '</div>';
+
+    if(u.role!=="admin"){
+      h+='<div class="card" style="border:1px solid #ef9a9a">'+
+        '<h3 style="margin-top:0;color:#c62828">⚠️ Danger Zone</h3>'+
+        '<p style="color:#999;font-size:13px;margin-top:0">Deleting your account is permanent.</p>'+
+        '<button onclick="deleteOwnAccount()" style="background:#c23b22">🗑 Delete My Account</button>'+
+        '</div>';
+    }
+
+    render(h);
+    window._profileInst = sel.slice();
+  });
+}
+
+function tglProfileInst(n){
+  var sel = window._profileInst||[];
+  var i   = sel.indexOf(n);
+  if(i>=0) sel.splice(i,1); else sel.push(n);
+  window._profileInst = sel;
+  document.querySelectorAll("#inst-chips .chip").forEach(function(el){
+    var nm = el.textContent;
+    el.className = "chip"+(sel.indexOf(nm)>=0?" on":"");
+  });
+}
+
+function saveProfileInst(){
+  var sel = window._profileInst||[];
+  if(!sel.length){ alert("Select at least one instrument"); return; }
+  var msg = document.getElementById("inst-profile-msg");
+  msg.innerHTML='<div class="msg-info">⏳ Saving...</div>';
+  ref.child("users/"+uid()+"/inst").set(sel).then(function(){
+    sessionStorage.setItem("inst", sel.join("|"));
+    msg.innerHTML='<div class="msg-ok">✅ Instruments saved!</div>';
+  }).catch(function(e){
+    msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+  });
+}
+
+function saveProfile(){
+  var name   = (document.getElementById("p-name").value||"").trim();
+  var email  = (document.getElementById("p-email").value||"").trim();
+  var phone  = (document.getElementById("p-phone").value||"").trim();
+  var curpw  = (document.getElementById("p-curpw").value||"");
+  var newpw  = (document.getElementById("p-newpw").value||"");
+  var confpw = (document.getElementById("p-confpw").value||"");
+  var msg    = document.getElementById("profile-msg");
+
+  if(!name||!email||!phone){
+    msg.innerHTML='<div class="msg-err">❌ Name, email and phone are required</div>'; return;
+  }
+  if(!curpw){
+    msg.innerHTML='<div class="msg-err">❌ Enter your current password to save changes</div>'; return;
+  }
+  if(newpw&&newpw.length<4){
+    msg.innerHTML='<div class="msg-err">❌ New password must be 4+ characters</div>'; return;
+  }
+  if(newpw&&newpw!==confpw){
+    msg.innerHTML='<div class="msg-err">❌ New passwords do not match</div>'; return;
+  }
+
+  msg.innerHTML='<div class="msg-info">⏳ Verifying...</div>';
+
+  ref.child("users/"+uid()+"/pass").once("value").then(function(snap){
+    if(snap.val()!==curpw){
+      msg.innerHTML='<div class="msg-err">❌ Current password is incorrect</div>'; return;
+    }
+    var updates = { name:name, email:email, phone:phone };
+    if(newpw) updates.pass = newpw;
+    ref.child("users/"+uid()).update(updates).then(function(){
+      sessionStorage.setItem("name", name);
+      setHeader();
+      msg.innerHTML='<div class="msg-ok">✅ Profile updated successfully!</div>';
+    }).catch(function(e){
+      msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+    });
+  });
+}
+
+function deleteOwnAccount(){
+  if(!confirm("Delete your account permanently?\n\nThis cannot be undone.")) return;
+  var curpw = prompt("Enter your password to confirm:");
+  if(!curpw) return;
+  ref.child("users/"+uid()+"/pass").once("value").then(function(snap){
+    if(snap.val()!==curpw){ alert("❌ Password incorrect."); return; }
+    ref.child("users/"+uid()).remove().then(function(){
+      alert("Your account has been deleted.");
+      logout();
+    });
+  });
+}
+
 
 start();
 </script>
