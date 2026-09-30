@@ -1,0 +1,9 @@
+{
+  "name": "worship-scheduler",
+  "version": "1.0.0",
+  "description": "Worship team scheduler with automated email reminders",
+  "private": true,
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}
