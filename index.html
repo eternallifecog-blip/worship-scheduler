@@ -1129,33 +1129,76 @@ function removeSvcSong(sid,songId){
 function showSongs(){
   setNav(isAdmin()?adminTabs():memberTabs());
   var h='<h2>Song Library</h2>';
+
   if(isAdmin()){
-    h+='<div class="card"><h3>🔍 Search Song Online</h3>'+
-      '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">'+
-      '<input id="sqry" placeholder="Song title + artist (e.g. Amazing Grace)">'+
-      '<button onclick="searchSongOnline()" style="width:auto;padding:10px 16px">Search</button></div>'+
-      '<div id="search-result"></div></div>'+
-      '<div class="card"><h3>✏️ Add Song Manually</h3>'+
-      '<input id="st" placeholder="Song Title">'+
-      '<label>Key</label><select id="sk">'+KEYS.map(function(k){return'<option>'+k+'</option>';}).join("")+'</select>'+
-      '<input id="snt" placeholder="Notes / Tempo / BPM">'+
-      '<textarea id="schords" rows="3" placeholder="Chords (e.g. G - D - Em - C)"></textarea>'+
-      '<textarea id="snc" rows="3" placeholder="Number Chart (e.g. 1 - 5 - 6m - 4)"></textarea>'+
-      '<textarea id="sly" rows="4" placeholder="Lyrics..."></textarea>'+
-      '<button onclick="addSong()">Add to Library</button></div>';
+    h+=
+      '<div class="card">'+
+        '<h3 style="margin-top:0">🔍 Search Song Online</h3>'+
+        '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">'+
+          '<input id="sqry" placeholder="Song title + artist (e.g. Amazing Grace Chris Tomlin)">'+
+          '<button onclick="searchSongOnline()" style="width:auto;padding:10px 16px">Search</button>'+
+        '</div>'+
+        '<div id="search-result"></div>'+
+      '</div>'+
+
+      '<div class="card">'+
+        '<h3 style="margin-top:0">📁 Add Song with File Upload</h3>'+
+        '<p style="color:#999;font-size:13px;margin-top:0">Upload a PDF, image, or text file containing chords/lyrics</p>'+
+        '<input id="st" placeholder="Song Title">'+
+        '<label>Original Key</label>'+
+        '<select id="sk" onchange="onKeyChange(this)">'+
+          KEYS.map(function(k){return'<option>'+k+'</option>';}).join("")+
+        '</select>'+
+        '<input id="snt" placeholder="Notes / Tempo / BPM">'+
+
+        '<label>Chord File (PDF / image / txt)</label>'+
+        '<input type="file" id="chord-file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp" onchange="loadChordFile(this)">'+
+        '<div id="chord-file-preview" style="font-size:12px;color:#999;margin-top:4px"></div>'+
+
+        '<label>Lyrics File (PDF / image / txt) — or paste below</label>'+
+        '<input type="file" id="lyric-file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp" onchange="loadLyricFile(this)">'+
+        '<div id="lyric-file-preview" style="font-size:12px;color:#999;margin-top:4px"></div>'+
+
+        '<label>Chords <small style="font-weight:normal;color:#999">(auto-filled from file, or type here)</small></label>'+
+        '<textarea id="schords" rows="4" placeholder="e.g. G  D  Em  C" oninput="transposePreview()"></textarea>'+
+
+        '<label>Number Chart <small style="font-weight:normal;color:#999">(auto-generated when you pick a key)</small></label>'+
+        '<textarea id="snc" rows="3" placeholder="e.g. 1  5  6m  4"></textarea>'+
+
+        '<label>Lyrics <small style="font-weight:normal;color:#999">(auto-filled from file, or type here)</small></label>'+
+        '<textarea id="sly" rows="5" placeholder="Paste lyrics here..."></textarea>'+
+
+        '<button onclick="addSong()" style="margin-top:14px">+ Add to Library</button>'+
+      '</div>';
   }
+
   if(!fbReady){render(h);return;}
+
   ref.child("songs").once("value").then(function(snap){
     var songs=snap.val()||{};
-    if(!Object.keys(songs).length){h+='<div class="card" style="text-align:center;color:#999;padding:30px">No songs yet.<br>Search online or add manually above.</div>';}
+    if(!Object.keys(songs).length){
+      h+='<div class="card" style="text-align:center;color:#999;padding:30px">No songs yet.<br>'+(isAdmin()?'Search online or upload a file above.':'Songs will appear here once admin adds them.')+'</div>';
+    }
     for(var k in songs){
       var sg=songs[k];
-      h+='<div class="song">'+
-        '<b style="font-size:15px">'+sg.title+'</b>'+
-        '<small style="color:#999">Key: '+sg.key+(sg.notes?' · '+sg.notes:'')+'</small>';
-      if(sg.chords) h+='<details><summary style="cursor:pointer;color:var(--accent)">🎸 Chords</summary><pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.chords+'</pre></details>';
-      if(sg.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent)">🔢 Number Chart</summary><pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.numberChart+'</pre></details>';
-      if(sg.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent)">📝 Lyrics</summary><pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.lyrics+'</pre></details>';
+      h+='<div class="song" id="song-'+k+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:start">'+
+          '<b style="font-size:15px">'+sg.title+'</b>'+
+          (isAdmin()?'<button onclick="editSongKey(\''+k+'\')" style="width:auto;padding:4px 10px;margin:0;font-size:12px;background:var(--bg);color:var(--accent);border:1px solid var(--line);border-radius:6px">🎵 Transpose</button>':'')+
+        '</div>'+
+        '<small style="color:#999">Key: <b>'+sg.key+'</b>'+(sg.notes?' · '+sg.notes:'')+'</small>';
+
+      if(sg.chords) h+='<details><summary style="cursor:pointer;color:var(--accent)">🎸 Chords</summary>'+
+        '<pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+escHtml(sg.chords)+'</pre></details>';
+      if(sg.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent)">🔢 Number Chart</summary>'+
+        '<pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+escHtml(sg.numberChart)+'</pre></details>';
+      if(sg.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent)">📝 Lyrics</summary>'+
+        '<pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+escHtml(sg.lyrics)+'</pre></details>';
+      if(sg.chordFile) h+='<details><summary style="cursor:pointer;color:var(--accent)">📄 Chord File</summary>'+
+        '<div style="margin-top:6px">'+renderFilePreview(sg.chordFile, sg.chordFileType)+'</div></details>';
+      if(sg.lyricFile) h+='<details><summary style="cursor:pointer;color:var(--accent)">📄 Lyric File</summary>'+
+        '<div style="margin-top:6px">'+renderFilePreview(sg.lyricFile, sg.lyricFileType)+'</div></details>';
+
       if(isAdmin()) h+='<button class="sec" style="margin-top:8px;font-size:12px" onclick="delSong(\''+k+'\')">Delete</button>';
       h+='</div>';
     }
@@ -1163,142 +1206,295 @@ function showSongs(){
   });
 }
 
-function searchSongOnline(){
-  var q=(document.getElementById("sqry").value||"").trim();
-  if(!q){alert("Enter a song title and artist");return;}
-  var box=document.getElementById("search-result");
-  box.innerHTML='<div style="padding:16px;text-align:center;color:#999">🔍 Searching for "'+q+'"...<br><small>Fetching lyrics, chords & number chart</small></div>';
+function renderFilePreview(dataUrl, fileType){
+  if(!dataUrl) return '';
+  if(fileType&&fileType.startsWith('image/')){
+    return '<img src="'+dataUrl+'" style="max-width:100%;border-radius:4px">';
+  }
+  if(fileType==='application/pdf'){
+    return '<embed src="'+dataUrl+'" type="application/pdf" width="100%" height="400px" style="border-radius:4px">';
+  }
+  // plain text stored as text content
+  return '<pre style="font-size:11px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+escHtml(dataUrl)+'</pre>';
+}
 
-  // Parse "Title Artist" — try splitting on common separators
-  var parts=q.split(/\s+by\s+|\s*-\s*/i);
-  var title=parts[0].trim();
-  var artist=parts[1]?parts[1].trim():"";
+// ── File loading ──
+function loadChordFile(input){
+  var file = input.files[0];
+  if(!file) return;
+  var preview = document.getElementById("chord-file-preview");
+  preview.textContent = "Loading: "+file.name+" ("+Math.round(file.size/1024)+" KB)...";
 
-  // Step 1: Search lyrics via lyrics.ovh (free, no key, CORS-enabled)
-  var lyricsUrl="https://api.lyrics.ovh/v1/"+encodeURIComponent(artist||"worship")+"/"+encodeURIComponent(title);
+  if(file.type==="text/plain"){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var txt = e.target.result;
+      document.getElementById("schords").value = txt;
+      transposePreview();
+      preview.textContent = "✅ Loaded: "+file.name;
+      window._chordFileData = txt;
+      window._chordFileType = "text/plain";
+    };
+    reader.readAsText(file);
+  } else {
+    // PDF or image — store as base64
+    var reader = new FileReader();
+    reader.onload = function(e){
+      window._chordFileData = e.target.result;
+      window._chordFileType = file.type;
+      preview.innerHTML = file.type.startsWith("image/")
+        ? '✅ '+file.name+' — <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
+        : '✅ '+file.name+' (PDF — will be stored with song)';
+    };
+    reader.readAsDataURL(file);
+  }
+}
 
-  fetch(lyricsUrl)
-  .then(function(r){return r.json();})
-  .then(function(data){
-    var lyrics=data.lyrics||"";
+function loadLyricFile(input){
+  var file = input.files[0];
+  if(!file) return;
+  var preview = document.getElementById("lyric-file-preview");
+  preview.textContent = "Loading: "+file.name+"...";
 
-    // Step 2: Search chords via chords.db proxy (free)
-    // Fallback: use chord progressions from a known worship song database
-    fetchChordsAndShow(title, artist, lyrics, box, q);
-  })
-  .catch(function(){
-    // Lyrics not found, still try chords
-    fetchChordsAndShow(title, artist, "", box, q);
+  if(file.type==="text/plain"){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var txt = e.target.result;
+      document.getElementById("sly").value = txt;
+      preview.textContent = "✅ Loaded: "+file.name;
+      window._lyricFileData = txt;
+      window._lyricFileType = "text/plain";
+    };
+    reader.readAsText(file);
+  } else {
+    var reader = new FileReader();
+    reader.onload = function(e){
+      window._lyricFileData = e.target.result;
+      window._lyricFileType = file.type;
+      preview.innerHTML = file.type.startsWith("image/")
+        ? '✅ '+file.name+' — <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
+        : '✅ '+file.name+' (PDF)';
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+// ── Key transposition ──
+var CHROMATIC = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+var CHORD_NAMES = {
+  "C":0,"C#":1,"Db":1,"D":2,"D#":3,"Eb":3,"E":4,"F":5,
+  "F#":6,"Gb":6,"G":7,"G#":8,"Ab":8,"A":9,"A#":10,"Bb":10,"B":11
+};
+var NUM_TO_SEMITONE = [0,2,4,5,7,9,11]; // scale degrees 1-7
+
+function semitoneOf(key){
+  return CHORD_NAMES[key]!==undefined ? CHORD_NAMES[key] : 0;
+}
+
+function transposeChord(chord, semitones){
+  // Handles: G, Am, F#m, Bb, Cmaj7, D/F#, etc.
+  return chord.replace(/[A-G][b#]?/g, function(note, offset){
+    // Only transpose the first note or bass note
+    var s = CHORD_NAMES[note];
+    if(s===undefined) return note;
+    var newS = ((s + semitones) % 12 + 12) % 12;
+    return CHROMATIC[newS];
   });
 }
 
-function fetchChordsAndShow(title, artist, lyrics, box, originalQuery){
-  // Use ultimate-guitar search via allorigins CORS proxy
-  var ugUrl="https://api.allorigins.win/get?url="+encodeURIComponent(
-    "https://www.ultimate-guitar.com/search.php?search_type=title&value="+encodeURIComponent(title)
-  );
-
-  fetch(ugUrl)
-  .then(function(r){return r.json();})
-  .then(function(data){
-    // Parse the store data from UG page
-    var html=data.contents||"";
-    var match=html.match(/window\.UGAPP\.store\.page\s*=\s*({.+?});\s*<\/script>/s)||
-               html.match(/data-content="([^"]+)"/);
-    
-    var chords="";
-    var key="";
-    var chordsLink="";
-    
-    // Try to extract song data
-    try{
-      if(match){
-        var pageData=JSON.parse(match[1].replace(/&quot;/g,'"').replace(/&amp;/g,'&'));
-        var results=(pageData.data&&pageData.data.results)||[];
-        // Find chords tab
-        for(var i=0;i<results.length;i++){
-          if(results[i].type==="Chords"&&results[i].song_name.toLowerCase()===title.toLowerCase()){
-            chordsLink=results[i].tab_url;
-            key=results[i].tonality_name||"";
-            break;
-          }
-        }
-      }
-    }catch(e){}
-    
-    showSongResult(box, title, artist, key, lyrics, chords, chordsLink, originalQuery);
-  })
-  .catch(function(){
-    showSongResult(box, title, artist, "", lyrics, "", "", originalQuery);
+function transposeText(text, fromKey, toKey){
+  if(!text||fromKey===toKey) return text;
+  var semitones = ((semitoneOf(toKey) - semitoneOf(fromKey)) % 12 + 12) % 12;
+  // Match chord tokens: word-boundary chord names followed by optional suffix
+  return text.replace(/\b([A-G][b#]?)(m|maj|min|dim|aug|sus|add|2|4|5|6|7|9|11|13|maj7|m7|dim7|m7b5|\/[A-G][b#]?)*/g, function(match){
+    return transposeChord(match, semitones);
   });
 }
 
-function showSongResult(box, title, artist, key, lyrics, chords, chordsLink, originalQuery){
-  var hasContent=lyrics||chords||chordsLink;
-  
-  if(!hasContent){
-    // Last fallback: show a helpful result with manual links
-    box.innerHTML='<div style="background:var(--bg);padding:14px;border-radius:8px;margin-top:12px">'+
-      '<b>🎵 '+title+'</b>'+(artist?'<br><small style="color:#999">by '+artist+'</small>':'')+
-      '<div style="margin:12px 0;padding:10px;background:#fff3e0;border-radius:6px;font-size:13px">'+
-      '<b>⚠️ Auto-fetch limited</b><br>Click links below to find chords/lyrics manually, then paste into the form:</div>'+
-      '<div style="display:grid;gap:8px;margin:12px 0">'+
-      '<a href="https://www.ultimate-guitar.com/search.php?search_type=title&value='+encodeURIComponent(title)+'" target="_blank" style="display:block;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink)">🎸 Find Chords on Ultimate Guitar</a>'+
-      '<a href="https://genius.com/search?q='+encodeURIComponent(title+' '+artist)+'" target="_blank" style="display:block;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink)">📝 Find Lyrics on Genius</a>'+
-      '<a href="https://www.worshipchords.com/search/?q='+encodeURIComponent(title)+'" target="_blank" style="display:block;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink)">🙏 Search on WorshipChords.com</a>'+
-      '<a href="https://www.praisecharts.com/songs/search/?s='+encodeURIComponent(title)+'" target="_blank" style="display:block;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink)">🎼 Search on PraiseCharts.com</a>'+
+function buildNumberChart(chordText, key){
+  if(!chordText) return "";
+  var rootSemitone = semitoneOf(key);
+  var scale = NUM_TO_SEMITONE.map(function(s){ return (rootSemitone+s)%12; });
+
+  return chordText.replace(/\b([A-G][b#]?)(m|maj|min|dim|aug|sus|add|2|4|5|6|7|9|11|13|maj7|m7|dim7|m7b5|\/[A-G][b#]?)*/g, function(match, root, suffix){
+    var s = CHORD_NAMES[root];
+    if(s===undefined) return match;
+    var degree = scale.indexOf(s);
+    if(degree===-1) return match; // chromatic — leave as chord name
+    var num = degree+1;
+    var isMinor = suffix&&(suffix[0]==="m"||suffix.indexOf("min")===0);
+    return num+(isMinor?"m":"")+(suffix&&!isMinor?suffix:"");
+  });
+}
+
+function transposePreview(){
+  var key    = (document.getElementById("sk")||{}).value;
+  var chords = (document.getElementById("schords")||{}).value||"";
+  if(!key||!chords) return;
+
+  // Store original key when user first types chords
+  if(!window._originalKey){
+    window._originalKey = key;
+    window._originalChords = chords;
+  }
+
+  // Regenerate number chart from current chords + key
+  var nc = buildNumberChart(chords, key);
+  var ncEl = document.getElementById("snc");
+  if(ncEl && nc) ncEl.value = nc;
+}
+
+function transposeForm(fromKey, toKey){
+  // Transpose chords text to new key and regenerate number chart
+  var chordsEl = document.getElementById("schords");
+  if(!chordsEl) return;
+  var chords = chordsEl.value;
+  if(!chords||!fromKey||!toKey||fromKey===toKey) return;
+
+  var newChords = transposeText(chords, fromKey, toKey);
+  chordsEl.value = newChords;
+
+  var nc = buildNumberChart(newChords, toKey);
+  var ncEl = document.getElementById("snc");
+  if(ncEl) ncEl.value = nc;
+}
+
+// Called when key selector changes in the add form
+function onKeyChange(selectEl){
+  var newKey = selectEl.value;
+  if(window._lastFormKey && window._lastFormKey !== newKey){
+    transposeForm(window._lastFormKey, newKey);
+  }
+  window._lastFormKey = newKey;
+  transposePreview();
+}
+
+// ── Edit/Transpose existing song ──
+function editSongKey(songId){
+  if(!fbReady) return;
+  ref.child("songs/"+songId).once("value").then(function(snap){
+    var sg = snap.val(); if(!sg) return;
+
+    var h='<div class="card">'+
+      '<h2>🎵 Transpose: '+sg.title+'</h2>'+
+      '<small style="color:#999">Current key: <b>'+sg.key+'</b></small>'+
+      '<label style="margin-top:16px">Transpose to new key</label>'+
+      '<select id="new-key">'+
+        KEYS.map(function(k){return'<option'+(k===sg.key?' selected':'')+'>'+k+'</option>';}).join("")+
+      '</select>'+
+      '<div id="transpose-preview" style="margin-top:14px"></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px">'+
+        '<button onclick="applyTranspose(\''+songId+'\',\''+sg.key+'\')" style="background:#28a745">✅ Save Transposed</button>'+
+        '<button class="sec" onclick="showSongs()">Cancel</button>'+
       '</div>'+
-      '<p style="font-size:12px;color:#999;margin:8px 0">Copy chords/lyrics from those sites, then use <b>Add Song Manually</b> below.</p>'+
-      '<button onclick="prefillManual(\''+title.replace(/'/g,"\\'")+'\')" style="background:var(--accent)">✏️ Pre-fill Manual Form</button>'+
-      '</div>';
+    '</div>';
+
+    render(h);
+    setNav(isAdmin()?adminTabs():memberTabs());
+
+    // Store original for preview
+    window._editSongData = sg;
+
+    // Live preview on key change
+    document.getElementById("new-key").addEventListener("change", function(){
+      showTransposePreview(sg);
+    });
+    showTransposePreview(sg);
+  });
+}
+
+function showTransposePreview(sg){
+  var newKey  = document.getElementById("new-key").value;
+  var fromKey = sg.key;
+  var box     = document.getElementById("transpose-preview");
+  if(!box) return;
+
+  if(newKey===fromKey){
+    box.innerHTML='<div style="color:#999;font-size:13px">Same key — no change</div>';
     return;
   }
-  
-  var html='<div style="background:var(--bg);padding:14px;border-radius:8px;margin-top:12px">'+
-    '<b style="font-size:15px">🎵 '+title+'</b>'+
-    (artist?'<br><small style="color:#999">by '+artist+'</small>':'')+
-    (key?'<div style="margin:8px 0"><b style="font-size:12px;color:#999">KEY: </b>'+key+'</div>':'')+
-    (chordsLink?'<a href="'+chordsLink+'" target="_blank" style="display:inline-block;margin:8px 0;padding:6px 12px;background:var(--card);border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--ink);font-size:13px">🎸 View Full Chords (Ultimate Guitar)</a><br>':'');
 
-  if(lyrics){
-    html+='<details open style="margin:8px 0"><summary style="cursor:pointer;color:var(--accent);font-size:13px;font-weight:bold">📝 Lyrics (found!)</summary>'+
-      '<pre style="font-size:11px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--card);padding:8px;border-radius:4px;margin-top:6px">'+
-      escHtml(lyrics.substring(0,3000))+'</pre></details>';
-  }
-  
-  html+='<div style="margin-top:14px;padding:12px;background:var(--card);border-radius:6px">'+
-    '<b style="font-size:13px">Save to Library</b>'+
-    '<input id="res-key" placeholder="Key (e.g. G)" value="'+escHtml(key)+'" style="margin-top:8px">'+
-    '<input id="res-tempo" placeholder="Tempo / BPM">'+
-    '<textarea id="res-chords" rows="3" placeholder="Paste chords here..."></textarea>'+
-    '<textarea id="res-nc" rows="2" placeholder="Number chart (e.g. 1-5-6m-4)..."></textarea>'+
-    '<button onclick="saveFromResult(\''+escJs(title)+'\',\''+escJs(artist)+'\')" style="background:#28a745;margin-top:8px">+ Save to Library</button></div>'+
+  var newChords = sg.chords ? transposeText(sg.chords, fromKey, newKey) : "";
+  var newNC     = newChords ? buildNumberChart(newChords, newKey) : "";
+
+  box.innerHTML=
+    '<div style="background:var(--bg);padding:12px;border-radius:8px">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+    '<div>'+
+      '<b style="font-size:12px;color:#999">ORIGINAL ('+fromKey+')</b>'+
+      (sg.chords?'<pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--card);padding:8px;border-radius:4px;margin-top:6px">'+escHtml(sg.chords)+'</pre>':'<div style="color:#999;font-size:12px;padding:8px">No chords</div>')+
+    '</div>'+
+    '<div>'+
+      '<b style="font-size:12px;color:var(--accent)">TRANSPOSED ('+newKey+')</b>'+
+      (newChords?'<pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--card);padding:8px;border-radius:4px;margin-top:6px">'+escHtml(newChords)+'</pre>':'<div style="color:#999;font-size:12px;padding:8px">No chords</div>')+
+    '</div>'+
+    '</div>'+
+    (newNC?'<div style="margin-top:10px"><b style="font-size:12px;color:#999">NUMBER CHART in '+newKey+'</b>'+
+      '<pre style="font-size:11px;white-space:pre-wrap;background:var(--card);padding:8px;border-radius:4px;margin-top:4px">'+escHtml(newNC)+'</pre></div>':'')+
     '</div>';
-  
-  box.innerHTML=html;
 }
 
-function prefillManual(title){
-  var el=document.getElementById("st");
-  if(el){el.value=title;el.scrollIntoView({behavior:"smooth"});}
-}
+function applyTranspose(songId, fromKey){
+  var newKey = document.getElementById("new-key").value;
+  if(!fbReady) return;
 
-function saveFromResult(title,artist){
-  var key=(document.getElementById("res-key").value||"").trim()||"C";
-  var tempo=(document.getElementById("res-tempo").value||"").trim();
-  var chords=(document.getElementById("res-chords").value||"").trim();
-  var nc=(document.getElementById("res-nc").value||"").trim();
-  var lyricsEl=document.querySelector("#search-result pre");
-  var lyrics=lyricsEl?lyricsEl.textContent:"";
-  
-  var id="sg_"+Math.random().toString(36).substr(2,9);
-  ref.child("songs/"+id).set({
-    title:title+(artist?" - "+artist:""),
-    key:key,notes:tempo,chords:chords,numberChart:nc,lyrics:lyrics
+  var sg = window._editSongData;
+  if(!sg) return;
+
+  var newChords = sg.chords ? transposeText(sg.chords, fromKey, newKey) : sg.chords;
+  var newNC     = newChords ? buildNumberChart(newChords, newKey) : sg.numberChart;
+
+  ref.child("songs/"+songId).update({
+    key:         newKey,
+    chords:      newChords||"",
+    numberChart: newNC||""
   }).then(function(){
-    alert("✅ Saved to library!");
+    alert("✅ Transposed to "+newKey+" and saved!");
     showSongs();
   });
+}
+
+function addSong(){
+  var t=(document.getElementById("st").value||"").trim();
+  if(!t){alert("Enter song title");return;}
+  var key    = document.getElementById("sk").value;
+  var chords = document.getElementById("schords").value;
+  var nc     = document.getElementById("snc").value || buildNumberChart(chords, key);
+
+  var data = {
+    title:       t,
+    key:         key,
+    notes:       document.getElementById("snt").value,
+    chords:      chords,
+    numberChart: nc,
+    lyrics:      document.getElementById("sly").value
+  };
+
+  // Attach uploaded files if any
+  if(window._chordFileData){
+    data.chordFile     = window._chordFileData;
+    data.chordFileType = window._chordFileType;
+  }
+  if(window._lyricFileData){
+    data.lyricFile     = window._lyricFileData;
+    data.lyricFileType = window._lyricFileType;
+  }
+
+  ref.child("songs/sg_"+Math.random().toString(36).substr(2,9)).set(data).then(function(){
+    // Reset file state
+    window._chordFileData = null;
+    window._chordFileType = null;
+    window._lyricFileData = null;
+    window._lyricFileType = null;
+    window._originalKey   = null;
+    window._lastFormKey   = null;
+    showSongs();
+  });
+}
+
+function delSong(id){
+  if(!confirm("Delete this song?")) return;
+  ref.child("songs/"+id).remove().then(showSongs);
 }
 
 function escHtml(s){
@@ -1306,24 +1502,6 @@ function escHtml(s){
 }
 function escJs(s){
   return (s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");
-}
-
-
-
-function addSong(){
-  var t=(document.getElementById("st").value||"").trim();
-  if(!t){alert("Enter title");return;}
-  ref.child("songs/sg_"+Math.random().toString(36).substr(2,9)).set({
-    title:t,
-    key:document.getElementById("sk").value,
-    notes:document.getElementById("snt").value,
-    chords:document.getElementById("schords").value,
-    numberChart:document.getElementById("snc").value,
-    lyrics:document.getElementById("sly").value
-  }).then(showSongs);
-}
-function delSong(id){
-  ref.child("songs/"+id).remove().then(showSongs);
 }
 
 /* ===== MY SERVICES (Member) ===== */
