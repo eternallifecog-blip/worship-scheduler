@@ -830,8 +830,66 @@ function showSettings(){
       '<div id="inst-msg" style="margin-top:8px"></div>'+
       '</div>';
 
+    /* ── Reminder Schedule ── */
+    ref.child("settings/reminder").once("value").then(function(rSnap){
+      var rs = rSnap.val() || { days:["monday","friday"], hourPST:8, minutePST:0 };
+      var selDays = rs.days || ["monday","friday"];
+      var DAYS = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+      var HOURS = [];
+      for(var hh=0;hh<24;hh++){
+        var ap=hh>=12?"PM":"AM", h12=hh>12?hh-12:(hh||12);
+        HOURS.push({val:hh, label:h12+":00 "+ap});
+      }
+
+      var rh = '<div class="card">'+
+        '<h3 style="margin-top:0">🔔 Reminder Schedule</h3>'+
+        '<p style="color:#999;font-size:13px;margin-top:0">'+
+        'Reminder emails are sent to members with pending RSVP on the days and time you choose (PST). '+
+        'Reminders stop automatically once a member accepts or declines, or is removed from the service.'+
+        '</p>'+
+
+        '<label>Send reminders on</label>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">';
+
+      DAYS.forEach(function(d){
+        var on = selDays.indexOf(d)>=0;
+        rh+='<span class="chip'+(on?" on":"")+'" id="rday-'+d+'" onclick="tglRDay(\''+d+'\')" '+
+          'style="text-transform:capitalize">'+d+'</span>';
+      });
+
+      rh+='</div>'+
+        '<label>Send at (PST timezone)</label>'+
+        '<select id="r-hour" style="margin-bottom:8px">';
+      HOURS.forEach(function(o){
+        rh+='<option value="'+o.val+'"'+(rs.hourPST===o.val?" selected":"")+'>'+o.label+'</option>';
+      });
+      rh+='</select>'+
+        '<button onclick="saveReminderSchedule()" style="background:#28a745">💾 Save Reminder Schedule</button>'+
+        '<div id="remind-msg" style="margin-top:8px"></div>';
+
+      // Show last run info
+      ref.child("settings/reminderLastRun").once("value").then(function(lrSnap){
+        var lr = lrSnap.val();
+        if(lr&&lr.timestamp){
+          var dt = new Date(lr.timestamp).toLocaleString();
+          rh+='<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:6px;font-size:12px;color:#999">'+
+            '🕐 Last run: <b>'+dt+'</b> &nbsp;|&nbsp; Sent: <b>'+lr.sent+'</b> &nbsp;|&nbsp; Already responded: <b>'+lr.skipped+'</b>'+
+            '</div>';
+        }
+        rh+='</div>';
+
+        // Insert reminder section before email section
+        var emailSection = document.getElementById("email-section");
+        if(emailSection){
+          emailSection.insertAdjacentHTML("beforebegin", rh);
+        }
+        // Store selected days globally
+        window._reminderDays = selDays.slice();
+      });
+    });
+
     /* ── EmailJS ── */
-    h+='<div class="card">'+
+    h+='<div class="card" id="email-section">'+
       '<h3>📧 Email Notifications (EmailJS)</h3>'+
       '<div style="background:#fff3e0;padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px">'+
       '<b>Setup steps:</b><br>'+
@@ -855,11 +913,20 @@ function showSettings(){
       '<div style="font-size:11px;color:#999;margin:-4px 0 8px">'+
       'Variables: {{member_name}}, {{rsvp_status}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{accepted_list}}, {{denied_list}}, {{pending_list}}'+
       '</div>'+
+
+      '<div style="background:#e8f5e9;padding:10px;border-radius:6px;margin:8px 0;font-size:13px">'+
+      '✅ <b>Reminder emails reuse the Member Notification template</b> — no extra template needed! '+
+      'A <code>{{is_reminder}}</code> variable is passed so your template can show "REMINDER:" in the subject.'+
+      '</div>'+
+
+      '<label>App URL (for RSVP links in reminder emails)</label>'+
+      '<input id="ejs-url" placeholder="e.g. https://yourname.github.io/worship-scheduler" value="'+(cfg.appUrl||window.location.href.split("?")[0])+'">'+
+
       '<button onclick="saveEmailSettings()" style="margin-top:12px">Save Email Settings</button>'+
       '<div id="settings-msg" style="margin-top:8px"></div>'+
       '</div>'+
 
-      '<div class="card">'+
+      '<div class="card" id="template-examples-section">'+
       '<h3>📋 Email Template Examples</h3>'+
       '<details><summary style="cursor:pointer;color:var(--accent)">Member Notification Template</summary>'+
       '<pre style="font-size:11px;white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:4px;margin-top:8px">'+
@@ -883,6 +950,16 @@ function showSettings(){
       '❌ Declined:\n{{denied_list}}\n\n'+
       '⏳ Pending:\n{{pending_list}}'+
       '</pre></details>'+
+      '<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent)">💡 How to handle reminders with only 2 templates</summary>'+
+      '<div style="background:var(--bg);padding:12px;border-radius:4px;margin-top:8px;font-size:12px">'+
+      '<b>The Member Notification template is reused for reminders.</b><br><br>'+
+      'The variable <code>{{is_reminder}}</code> is passed as <b>Yes</b> for reminders and blank for first assignments.<br><br>'+
+      'In EmailJS you can use conditional subject lines like:<br>'+
+      '<code>{{#is_reminder}}⏰ REMINDER: {{/is_reminder}}You\'ve been assigned to {{svc_name}}</code><br><br>'+
+      'Or simply use a subject like:<br>'+
+      '<code>Worship Assignment — {{svc_name}} on {{svc_date}}</code><br>'+
+      'which works for both first notification and reminders.'+
+      '</div></details>'+
       '</div>';
 
     render(h);
@@ -949,18 +1026,56 @@ function saveEmailSettings(){
   var svc = (document.getElementById("ejs-svc").value||"").trim();
   var tm  = (document.getElementById("ejs-tm").value||"").trim();
   var ta  = (document.getElementById("ejs-ta").value||"").trim();
+  var url = (document.getElementById("ejs-url").value||"").trim();
   var msg = document.getElementById("settings-msg");
 
   if(!pub||!svc||!tm||!ta){
-    msg.innerHTML='<div class="msg-err">❌ Fill all fields</div>'; return;
+    msg.innerHTML='<div class="msg-err">❌ Fill Public Key, Service ID and both Template IDs</div>'; return;
   }
   msg.innerHTML='<div class="msg-info">⏳ Saving...</div>';
 
   ref.child("settings/emailjs").set({
-    publicKey:pub, serviceId:svc, templateIdMember:tm, templateIdAdmin:ta
+    publicKey:pub, serviceId:svc,
+    templateIdMember:tm, templateIdAdmin:ta,
+    appUrl:url
   }).then(function(){
     initEmailJS(pub);
     msg.innerHTML='<div class="msg-ok">✅ Email settings saved!</div>';
+  }).catch(function(e){
+    msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+  });
+}
+
+function tglRDay(d){
+  window._reminderDays = window._reminderDays||["monday","friday"];
+  var i = window._reminderDays.indexOf(d);
+  if(i>=0) window._reminderDays.splice(i,1);
+  else window._reminderDays.push(d);
+  // Update chip appearance
+  var chip = document.getElementById("rday-"+d);
+  if(chip) chip.className = "chip"+(window._reminderDays.indexOf(d)>=0?" on":"");
+}
+
+function saveReminderSchedule(){
+  var days = window._reminderDays||[];
+  var hourEl = document.getElementById("r-hour");
+  var hour   = hourEl ? parseInt(hourEl.value,10) : 8;
+  var msg    = document.getElementById("remind-msg");
+
+  if(!days.length){
+    msg.innerHTML='<div class="msg-err">❌ Select at least one day</div>'; return;
+  }
+  msg.innerHTML='<div class="msg-info">⏳ Saving...</div>';
+
+  ref.child("settings/reminder").set({
+    days:    days,
+    hourPST: hour,
+    minutePST: 0
+  }).then(function(){
+    var dayLabels = days.map(function(d){return d.charAt(0).toUpperCase()+d.slice(1);}).join(", ");
+    var h12  = hour>12?hour-12:(hour||12);
+    var ampm = hour>=12?"PM":"AM";
+    msg.innerHTML='<div class="msg-ok">✅ Reminders set for <b>'+dayLabels+'</b> at <b>'+h12+':00 '+ampm+' PST</b></div>';
   }).catch(function(e){
     msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
   });
