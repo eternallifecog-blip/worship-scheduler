@@ -397,7 +397,7 @@ function showManage(){
 }
 function approveUser(id,name){
   logActivity("user_approved","Approved: "+name);
-  ref.child("users/"+id).update({status:"approved"})).then(function(){
+  ref.child("users/"+id).update({status:"approved"}).then(function(){
     alert("✅ "+name+" approved!");
     showManage();
   });
@@ -405,20 +405,20 @@ function approveUser(id,name){
 function rejectUser(id,name){
   if(!confirm("Reject "+name+"?")) return;
   logActivity("user_rejected","Rejected: "+name);
-  ref.child("users/"+id).update({status:"rejected"})).then(function(){
+  ref.child("users/"+id).update({status:"rejected"}).then(function(){
     showManage();
   });
 }
 function promote(id,name){
   logActivity("promoted_coadmin",name+" → Co-Admin");
-  ref.child("users/"+id).update({role:"co-admin"})).then(function(){
+  ref.child("users/"+id).update({role:"co-admin"}).then(function(){
     alert("⭐ "+name+" is now Co-Admin!");
     showManage();
   });
 }
 function demote(id,name){
   logActivity("demoted_coadmin",name+" → Member");
-  ref.child("users/"+id).update({role:"member"})).then(function(){
+  ref.child("users/"+id).update({role:"member"}).then(function(){
     alert(name+" is now Member");
     showManage();
   });
