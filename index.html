@@ -55,14 +55,14 @@ var selDays = {};
 var INST = ["Drums","Vocals","Bass Guitar","Acoustic Guitar","Piano","Media","Sound"];
 var KEYS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
-// ── EmailJS config (admin fills these in Settings tab) ──
+// -- EmailJS config (admin fills these in Settings tab) --
 // Get free account at https://www.emailjs.com
 // Store in Firebase so admin can set via UI
 var EJS = { ready: false };
 function initEmailJS(pubKey){ if(pubKey){ emailjs.init(pubKey); EJS.ready=true; } }
 
-// ── Firebase config (Production) ──
-// Sandbox/prod split is set up later — currently always uses production
+// -- Firebase config (Production) --
+// Sandbox/prod split is set up later - currently always uses production
 var IS_PROD = true;
 var ENV = "production";
 
@@ -89,10 +89,10 @@ var FB = {
     db  = firebase.database();
     ref = db.ref("worship");
     fbReady = true;
-    document.getElementById("synctxt").textContent = "✓ Connected";
+    document.getElementById("synctxt").textContent = "ok Connected";
 
     db.ref(".info/connected").on("value", function(s){
-      document.getElementById("synctxt").textContent = s.val() ? "✓ Connected" : "✗ Offline";
+      document.getElementById("synctxt").textContent = s.val() ? "ok Connected" : "✗ Offline";
     });
 
     // Load custom instruments from Firebase (if admin has customized)
@@ -128,8 +128,13 @@ function setNav(tabs){
 
 function setHeader(){
   if(uname()){
-    var r=urole(), icon=r==="admin"?"👑":r==="co-admin"?"⭐":"👤";
-    document.getElementById("uinfo").textContent=icon+" "+uname()+" ("+r+")";
+    var r=urole();
+    var icon=r==="admin"?"👑":r==="co-admin"?"⭐":"👤";
+    var inst=uinst().replace(/\|/g,", ");
+    document.getElementById("uinfo").innerHTML=
+      '<span style="font-weight:bold">'+icon+' '+uname()+'</span>'+
+      ' <span style="color:#aaa;font-size:11px">('+r+')</span>'+
+      (inst?'&nbsp;&nbsp;<span style="color:#aaa;font-size:11px">'+inst+'</span>':'');
   }else{
     document.getElementById("uinfo").textContent="";
   }
@@ -159,7 +164,7 @@ function start(){
   else showHome();
 }
 
-function adminTabs(){return[["home","Home"],["manage","👥 Users"],["plan","Plan"],["songs","Songs"],["chat","Chat"],["team","Team"],["settings","⚙️"],["log","📋 Log"],["profile","👤"],["logout","Logout"]]}
+function adminTabs(){return[["home","Home"],["manage","👥 Users"],["songs","Songs"],["chat","Chat"],["team","Team"],["settings","⚙️"],["log","📋 Log"],["profile","👤"],["logout","Logout"]]}
 function memberTabs(){return[["home","Home"],["my","Services"],["songs","Songs"],["avail","Off"],["chat","Chat"],["profile","👤"],["logout","Logout"]]}
 
 function logout(){
@@ -167,7 +172,7 @@ function logout(){
   sessionStorage.clear();tab="home";start();
 }
 
-/* ── Activity Logger ── */
+/* -- Activity Logger -- */
 function logActivity(action, detail){
   if(!fbReady) return;
   var me = sessionStorage.getItem("name")||"Unknown";
@@ -188,10 +193,10 @@ function logActivity(action, detail){
 /* ===== LOGIN ===== */
 function showLogin(){
   setNav([]);
-  render('<div class="card" style="max-width:500px;margin:0 auto" id="logincard"><div class="msg-info">⏳ Checking database...</div></div>');
+  render('<div class="card" style="max-width:500px;margin:0 auto" id="logincard"><div class="msg-info">... Checking database...</div></div>');
   
   if(!fbReady){
-    document.getElementById("logincard").innerHTML='<h2>🎵 Worship Scheduler</h2><div class="msg-err">⏳ Firebase is loading. Please wait and refresh.</div>';
+    document.getElementById("logincard").innerHTML='<h2>🎵 Worship Scheduler</h2><div class="msg-err">... Firebase is loading. Please wait and refresh.</div>';
     return;
   }
   
@@ -204,13 +209,13 @@ function showLogin(){
     var html='<h2>🎵 Worship Scheduler</h2>';
     
     if(!hasAdmin){
-      html+='<div class="msg-ok"><b>👑 Setup: Create Your Admin Account</b><br>You are the first user — you will be Admin.</div>'+
+      html+='<div class="msg-ok"><b> Setup: Create Your Admin Account</b><br>You are the first user - you will be Admin.</div>'+
         '<input id="nm" placeholder="Full Name"><input id="em" type="email" placeholder="Email">'+
         '<input id="ph" type="tel" placeholder="Phone"><input id="pw" type="password" placeholder="Password (4+ chars)">'+
         '<button onclick="doSignup(true)" style="background:#28a745">Create Admin Account</button>'+
         '<div id="smsg"></div>';
     }else{
-      html+='<div class="msg-info"><b>👤 Join the Team</b><br>Your account needs admin approval before signing in.</div>'+
+      html+='<div class="msg-info"><b> Join the Team</b><br>Your account needs admin approval before signing in.</div>'+
         '<input id="nm" placeholder="Full Name"><input id="em" type="email" placeholder="Email">'+
         '<input id="ph" type="tel" placeholder="Phone"><input id="pw" type="password" placeholder="Password (4+ chars)">'+
         '<button onclick="doSignup(false)">Request to Join</button>'+
@@ -241,10 +246,10 @@ function doSignup(isFirst){
   var pw=(document.getElementById("pw").value||"");
   var msg=document.getElementById("smsg");
   
-  if(!nm||!em||!ph||pw.length<4){msg.innerHTML='<div class="msg-err">❌ Fill all fields (password 4+ chars)</div>';return;}
-  if(!fbReady){msg.innerHTML='<div class="msg-err">⏳ Firebase not ready</div>';return;}
+  if(!nm||!em||!ph||pw.length<4){msg.innerHTML='<div class="msg-err">x Fill all fields (password 4+ chars)</div>';return;}
+  if(!fbReady){msg.innerHTML='<div class="msg-err">... Firebase not ready</div>';return;}
   
-  msg.innerHTML='<div class="msg-info">⏳ Creating account...</div>';
+  msg.innerHTML='<div class="msg-info">... Creating account...</div>';
   
   var id="u_"+Math.random().toString(36).substr(2,9);
   ref.child("users/"+id).set({
@@ -254,14 +259,14 @@ function doSignup(isFirst){
     inst:[],off:{},
     createdAt:Date.now()
   },function(err){
-    if(err){msg.innerHTML='<div class="msg-err">❌ '+err.message+'</div>';}
+    if(err){msg.innerHTML='<div class="msg-err">x '+err.message+'</div>';}
     else{
       if(isFirst){
-        msg.innerHTML='<div class="msg-ok">✅ Admin account created! Sign in below.</div>';
-        alert("✅ Admin Account Created!\n\nNow sign in below with your name and password.");
+        msg.innerHTML='<div class="msg-ok">ok Admin account created! Sign in below.</div>';
+        alert("ok Admin Account Created!\n\nNow sign in below with your name and password.");
       }else{
-        msg.innerHTML='<div class="msg-ok">✅ Account created! Sign in below.</div>';
-        alert("✅ Account created!\n\nSign in below.");
+        msg.innerHTML='<div class="msg-ok">ok Account created! Sign in below.</div>';
+        alert("ok Account created!\n\nSign in below.");
       }
     }
   });
@@ -272,10 +277,10 @@ function doSignin(){
   var pw=(document.getElementById("sp").value||"");
   var msg=document.getElementById("inmsg");
   
-  if(!nm||!pw){msg.innerHTML='<div class="msg-err">❌ Enter name and password</div>';return;}
-  if(!fbReady){msg.innerHTML='<div class="msg-err">⏳ Firebase not ready</div>';return;}
+  if(!nm||!pw){msg.innerHTML='<div class="msg-err">x Enter name and password</div>';return;}
+  if(!fbReady){msg.innerHTML='<div class="msg-err">... Firebase not ready</div>';return;}
   
-  msg.innerHTML='<div class="msg-info">⏳ Signing in...</div>';
+  msg.innerHTML='<div class="msg-info">... Signing in...</div>';
   
   ref.child("users").once("value").then(function(snap){
     var users=snap.val()||{};
@@ -285,10 +290,10 @@ function doSignin(){
       if(users[k].name===nm){fk=k;fu=users[k];break;}
     }
     
-    if(!fu){msg.innerHTML='<div class="msg-err">❌ Name not found</div>';return;}
-    if(fu.pass!==pw){msg.innerHTML='<div class="msg-err">❌ Password incorrect</div>';return;}
-    if(fu.status==="pending"){msg.innerHTML='<div class="msg-err">⏳ Awaiting admin approval</div>';return;}
-    if(fu.status==="rejected"){msg.innerHTML='<div class="msg-err">❌ Account rejected by admin</div>';return;}
+    if(!fu){msg.innerHTML='<div class="msg-err">x Name not found</div>';return;}
+    if(fu.pass!==pw){msg.innerHTML='<div class="msg-err">x Password incorrect</div>';return;}
+    if(fu.status==="pending"){msg.innerHTML='<div class="msg-err">... Awaiting admin approval</div>';return;}
+    if(fu.status==="rejected"){msg.innerHTML='<div class="msg-err">x Account rejected by admin</div>';return;}
     
     sessionStorage.setItem("uid",fk);
     sessionStorage.setItem("name",fu.name);
@@ -304,8 +309,8 @@ function doReset(){
   if(!confirm("Delete ALL users and start fresh?")) return;
   ref.child("users").remove(function(err){
     var msg=document.getElementById("rmsg");
-    if(err){msg.innerHTML='<div class="msg-err">❌ '+err.message+'</div>';}
-    else{msg.innerHTML='<div class="msg-ok">✅ Cleared! Now create admin above.</div>';showLogin();}
+    if(err){msg.innerHTML='<div class="msg-err">x '+err.message+'</div>';}
+    else{msg.innerHTML='<div class="msg-ok">ok Cleared! Now create admin above.</div>';showLogin();}
   });
 }
 
@@ -335,13 +340,80 @@ function saveInst(){
 
 /* ===== HOME ===== */
 function showHome(){
-  setNav(isAdmin()?adminTabs():memberTabs());
-  var role=urole();
-  var icon=role==="admin"?"👑":role==="co-admin"?"⭐":"👤";
-  render('<div class="card">'+
-    '<h2>'+icon+' Welcome, '+uname()+'!</h2>'+
-    '<p style="color:#999">'+uinst().replace(/\|/g,", ")+'</p>'+
-    '</div>');
+  if(isAdmin()){
+    showPlan(); // Admin home = Plan
+  } else {
+    showMemberHome(); // Member home = upcoming services + RSVP
+  }
+}
+
+function showMemberHome(){
+  setNav(memberTabs());
+  render('<h2>Your Upcoming Services</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+  var me=uid();
+  Promise.all([
+    ref.child("services").once("value"),
+    ref.child("users").once("value"),
+    ref.child("songs").once("value")
+  ]).then(function(results){
+    var svcs  = results[0].val()||{};
+    var users = results[1].val()||{};
+    var songs = results[2].val()||{};
+    var today = new Date().toISOString().split("T")[0];
+    var h='<h2>Your Upcoming Services</h2>';
+    var found=false;
+    var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
+    keys.forEach(function(k){
+      var s=svcs[k];
+      if(s.date<today) return;
+      if(!s.slots) return;
+      var myInst=[];
+      for(var ins in s.slots){
+        if(s.slots[ins]&&s.slots[ins][me]) myInst.push(ins);
+      }
+      if(!myInst.length) return;
+      found=true;
+      var rsvpStatus=(s.rsvp&&s.rsvp[me])||"pending";
+      var rsvpColor=rsvpStatus==="accepted"?"#28a745":rsvpStatus==="denied"?"#c62828":"#e65100";
+      var rsvpLabel=rsvpStatus==="accepted"?"✅ Accepted":rsvpStatus==="denied"?"❌ Declined":"⏳ Respond";
+      var svcSongs=s.songs?Object.keys(s.songs).map(function(sk){return{id:sk,title:s.songs[sk],data:songs[sk]};}).filter(function(x){return x.title;})  :[];
+      h+='<div class="card">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">'+
+        '<div><b style="font-size:15px">'+s.name+'</b><br>'+
+        '<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small></div>'+
+        '<span style="background:'+rsvpColor+';color:#fff;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:bold;white-space:nowrap">'+rsvpLabel+'</span>'+
+        '</div>';
+      h+=myInst.map(function(i){return'<span style="background:var(--accent);color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:bold;margin-right:4px">'+i+'</span>';}).join('');
+      if(rsvpStatus==="pending"){
+        h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 4px">'+
+          '<button onclick="rsvpService(\''+k+'\',\'accepted\')" style="background:#28a745;margin:0;padding:10px">✅ Accept</button>'+
+          '<button onclick="rsvpService(\''+k+'\',\'denied\')" style="background:#c23b22;margin:0;padding:10px">❌ Decline</button>'+
+          '</div>';
+      }
+      if(svcSongs.length){
+        h+='<div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:6px">'+
+          '<b style="font-size:12px">🎵 Songs</b>';
+        svcSongs.forEach(function(sg){
+          h+='<div style="margin-top:6px;padding:8px;background:var(--card);border-radius:4px;border-left:3px solid var(--accent)">'+
+            '<b style="font-size:13px">'+sg.title+'</b>';
+          if(sg.data){
+            if(sg.data.key) h+=' <span style="font-size:11px;color:#999">Key: <b>'+sg.data.key+'</b></span>';
+            if(sg.data.chords) h+='<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">🎸 Chords</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--bg);padding:6px;border-radius:4px">'+sg.data.chords+'</pre></details>';
+            if(sg.data.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">🔢 Number Chart</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--bg);padding:6px;border-radius:4px">'+sg.data.numberChart+'</pre></details>';
+            if(sg.data.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">📝 Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--bg);padding:6px;border-radius:4px">'+sg.data.lyrics+'</pre></details>';
+          }
+          h+='</div>';
+        });
+        h+='</div>';
+      }
+      h+='</div>';
+    });
+    if(!found){
+      h='<h2>Your Upcoming Services</h2><div class="card" style="text-align:center;color:#999;padding:30px">No upcoming services assigned</div>';
+    }
+    render(h);
+  });
 }
 
 /* ===== USER MANAGEMENT (Admin) ===== */
@@ -362,12 +434,12 @@ function showManage(){
     var h='<h2>👥 User Management</h2>';
     
     if(pending.length){
-      h+='<h3>⏳ Pending Requests ('+pending.length+')</h3>';
+      h+='<h3>... Pending Requests ('+pending.length+')</h3>';
       pending.forEach(function(u){
         h+='<div class="card pending"><b>'+u.name+'</b>'+
           '<div style="font-size:12px;margin:8px 0;color:#666">📧 '+u.email+'<br>📱 '+u.phone+'</div>'+
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-          '<button class="green" style="margin:0" onclick="approveUser(\''+u._id+'\',\''+u.name+'\')">✓ Approve</button>'+
+          '<button class="green" style="margin:0" onclick="approveUser(\''+u._id+'\',\''+u.name+'\')">ok Approve</button>'+
           '<button class="red" style="margin:0" onclick="rejectUser(\''+u._id+'\',\''+u.name+'\')">✗ Reject</button>'+
           '</div></div>';
       });
@@ -376,17 +448,17 @@ function showManage(){
     }
     
     if(approved.length){
-      h+='<h3>✓ Approved Members ('+approved.length+')</h3>';
+      h+='<h3>ok Approved Members ('+approved.length+')</h3>';
       approved.forEach(function(u){
         var isCoA=u.role==="co-admin";
         h+='<div class="card approved"><b>'+
-          (u.role==="admin"?"👑":isCoA?"⭐":"👤")+' '+u.name+'</b>'+
+          (u.role==="admin"?"":isCoA?"*":"")+' '+u.name+'</b>'+
           '<div style="font-size:12px;color:#666;margin:4px 0">'+
           (u.inst&&u.inst.length?u.inst.join(", "):"No instruments")+'</div>';
         if(u.role!=="admin"){
           h+=isCoA?
             '<button class="sec" style="margin-top:8px" onclick="demote(\''+u._id+'\',\''+u.name+'\')">⬇ Remove Co-Admin</button>':
-            '<button class="sec" style="margin-top:8px" onclick="promote(\''+u._id+'\',\''+u.name+'\')">⭐ Make Co-Admin</button>';
+            '<button class="sec" style="margin-top:8px" onclick="promote(\''+u._id+'\',\''+u.name+'\')">* Make Co-Admin</button>';
         }
         h+='</div>';
       });
@@ -398,7 +470,7 @@ function showManage(){
 function approveUser(id,name){
   logActivity("user_approved","Approved: "+name);
   ref.child("users/"+id).update({status:"approved"}).then(function(){
-    alert("✅ "+name+" approved!");
+    alert("ok "+name+" approved!");
     showManage();
   });
 }
@@ -410,21 +482,21 @@ function rejectUser(id,name){
   });
 }
 function promote(id,name){
-  logActivity("promoted_coadmin",name+" → Co-Admin");
+  logActivity("promoted_coadmin",name+" -> Co-Admin");
   ref.child("users/"+id).update({role:"co-admin"}).then(function(){
-    alert("⭐ "+name+" is now Co-Admin!");
+    alert("* "+name+" is now Co-Admin!");
     showManage();
   });
 }
 function demote(id,name){
-  logActivity("demoted_coadmin",name+" → Member");
+  logActivity("demoted_coadmin",name+" -> Member");
   ref.child("users/"+id).update({role:"member"}).then(function(){
     alert(name+" is now Member");
     showManage();
   });
 }
 
-/* ===== PLAN (Admin) ===== */
+/* ===== PLAN (Admin) - shown on Home tab ===== */
 function showPlan(){
   setNav(adminTabs());
   var h='<div class="card"><h2>Plan Service</h2>'+
@@ -469,7 +541,7 @@ function deleteSvc(id, name, date){
   }
   ref.child("services/"+id).remove().then(function(){
     logActivity("service_deleted","Deleted: "+name+" on "+date);
-    showPlan();
+    showHome();
   }).catch(function(e){
     alert("Error deleting: "+e.message);
   });
@@ -500,7 +572,7 @@ function addSvc(){
       return;
     }
     
-    // No duplicate — save
+    // No duplicate - save
     var id = "s_" + Math.random().toString(36).substr(2,9);
     logActivity("service_created","Created: "+nm+" on "+d);
     ref.child("services/"+id).set({
@@ -512,7 +584,7 @@ function addSvc(){
     }).then(function(){
       // Clear the form fields
       document.getElementById("sd").value = "";
-      showPlan();
+      showHome();
     });
   });
 }
@@ -520,7 +592,7 @@ function editSvc(id){
   setNav(adminTabs());
   render('<div class="card">Loading...</div>');
   ref.child("services/"+id).once("value").then(function(ss){
-    var s=ss.val(); if(!s) return showPlan();
+    var s=ss.val(); if(!s) return showHome();
     ref.child("users").once("value").then(function(us){
       var users={}, ud=us.val()||{};
       for(var k in ud){ if(ud[k].status==="approved") users[k]=ud[k]; }
@@ -588,19 +660,19 @@ function editSvc(id){
           '<b style="font-size:13px">📬 RSVP Status</b>'+
           '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">'+
           '<div style="background:#e8f5e9;padding:8px;border-radius:6px;border-left:3px solid #28a745">'+
-            '<div style="font-size:11px;font-weight:bold;color:#2e7d32">✅ ACCEPTED ('+rsvpAccepted.length+')</div>'+
+            '<div style="font-size:11px;font-weight:bold;color:#2e7d32">ok ACCEPTED ('+rsvpAccepted.length+')</div>'+
             rsvpAccepted.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
-            (!rsvpAccepted.length?'<div style="font-size:12px;color:#999">—</div>':'')+
+            (!rsvpAccepted.length?'<div style="font-size:12px;color:#999">-</div>':'')+
           '</div>'+
           '<div style="background:#ffebee;padding:8px;border-radius:6px;border-left:3px solid #c62828">'+
-            '<div style="font-size:11px;font-weight:bold;color:#c62828">❌ DECLINED ('+rsvpDenied.length+')</div>'+
+            '<div style="font-size:11px;font-weight:bold;color:#c62828">x DECLINED ('+rsvpDenied.length+')</div>'+
             rsvpDenied.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
-            (!rsvpDenied.length?'<div style="font-size:12px;color:#999">—</div>':'')+
+            (!rsvpDenied.length?'<div style="font-size:12px;color:#999">-</div>':'')+
           '</div>'+
           '<div style="background:#fff3e0;padding:8px;border-radius:6px;border-left:3px solid #ff9800">'+
-            '<div style="font-size:11px;font-weight:bold;color:#e65100">⏳ PENDING ('+rsvpPending.length+')</div>'+
+            '<div style="font-size:11px;font-weight:bold;color:#e65100">... PENDING ('+rsvpPending.length+')</div>'+
             rsvpPending.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
-            (!rsvpPending.length?'<div style="font-size:12px;color:#999">—</div>':'')+
+            (!rsvpPending.length?'<div style="font-size:12px;color:#999">-</div>':'')+
           '</div></div></div>';
       }
 
@@ -628,12 +700,12 @@ function editSvc(id){
           if(users[aid]){
             var memberRsvp = rsvpData[aid]||"pending";
             var rBadge = memberRsvp==="accepted"
-              ? '<span style="font-size:10px;background:#28a745;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">✅ Accepted</span>'
+              ? '<span style="font-size:10px;background:#28a745;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">ok Accepted</span>'
               : memberRsvp==="denied"
-              ? '<span style="font-size:10px;background:#c62828;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">❌ Declined</span>'
-              : '<span style="font-size:10px;background:#ff9800;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">⏳ Pending</span>';
+              ? '<span style="font-size:10px;background:#c62828;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">x Declined</span>'
+              : '<span style="font-size:10px;background:#ff9800;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">... Pending</span>';
             h+='<div style="background:var(--accent);color:#fff;padding:8px 10px;margin:4px 0;display:flex;justify-content:space-between;align-items:center;border-radius:6px;font-size:13px">'+
-              '<span>✓ '+users[aid].name+rBadge+'</span>'+
+              '<span>ok '+users[aid].name+rBadge+'</span>'+
               '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" onclick="delAssign(\''+id+'\',\''+ins+'\',\''+aid+'\')">Remove</button></div>';
           }
         }
@@ -651,7 +723,7 @@ function editSvc(id){
         // Show available members as green chips (clickable to assign)
         if(availMembers.length){
           h+='<div style="margin-top:8px">';
-          h+='<div style="font-size:11px;color:#2e7d32;margin-bottom:4px">✅ Available (tap to assign)</div>';
+          h+='<div style="font-size:11px;color:#2e7d32;margin-bottom:4px">ok Available (tap to assign)</div>';
           availMembers.forEach(function(m){
             h+='<span onclick="addAssign(\''+id+'\',\''+ins+'\',\''+m.id+'\')" '+
               'style="display:inline-block;margin:3px;padding:6px 12px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:20px;font-size:13px;cursor:pointer">'+
@@ -663,7 +735,7 @@ function editSvc(id){
         // Show unavailable members as red chips (greyed out, still assignable via dropdown)
         if(unavailMembers.length){
           h+='<div style="margin-top:8px">';
-          h+='<div style="font-size:11px;color:#c62828;margin-bottom:4px">❌ Off / Unavailable</div>';
+          h+='<div style="font-size:11px;color:#c62828;margin-bottom:4px">x Off / Unavailable</div>';
           unavailMembers.forEach(function(m){
             h+='<span style="display:inline-block;margin:3px;padding:6px 12px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:20px;font-size:13px;text-decoration:line-through;opacity:0.7">'+
               m.name+'</span>';
@@ -687,7 +759,7 @@ function editSvc(id){
       
       h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px">'+
         '<button onclick="editSvcSongs(\''+id+'\')">🎵 Assign Songs</button>'+
-        '<button class="sec" onclick="showPlan()">← Back</button></div></div>';
+        '<button class="sec" onclick="showHome()"><- Back</button></div></div>';
       render(h);
     });
   });
@@ -711,7 +783,7 @@ function delAssign(sid,ins,memberId){
   ref.child("services/"+sid+"/rsvp/"+memberId).remove().then(function(){editSvc(sid);});
 }
 
-// ── Send assignment email to member ──
+// -- Send assignment email to member --
 function sendAssignmentEmail(sid, ins, memberId){
   Promise.all([
     ref.child("services/"+sid).once("value"),
@@ -723,7 +795,7 @@ function sendAssignmentEmail(sid, ins, memberId){
     var ejsCfg = res[2].val()||{};
 
     if(!ejsCfg.publicKey||!ejsCfg.serviceId||!ejsCfg.templateIdMember){
-      console.log("EmailJS not configured — skipping email");
+      console.log("EmailJS not configured - skipping email");
       return;
     }
 
@@ -760,14 +832,14 @@ function sendAssignmentEmail(sid, ins, memberId){
       deny_url:   denyUrl,
       admin_email:adminEmail
     }).then(function(){
-      console.log("✅ Assignment email sent to "+member.name);
+      console.log("ok Assignment email sent to "+member.name);
     }).catch(function(e){
       console.error("Email error:",e);
     });
   });
 }
 
-// ── Handle RSVP links (Accept/Deny from email) ──
+// -- Handle RSVP links (Accept/Deny from email) --
 function checkRsvpFromUrl(){
   var params = new URLSearchParams(window.location.search);
   var rsvp = params.get("rsvp");
@@ -794,8 +866,8 @@ function checkRsvpFromUrl(){
     ref.child("services/"+sid+"/rsvp/"+muid).set(status).then(function(){
       // Show confirmation in app
       var msg = status==="accepted"
-        ? "✅ You've ACCEPTED the service!\n\n"+svc.name+"\n"+svc.date+" at "+svc.time
-        : "❌ You've DECLINED the service.\n\n"+svc.name+"\n"+svc.date+" at "+svc.time+"\n\nAdmin has been notified.";
+        ? "ok You've ACCEPTED the service!\n\n"+svc.name+"\n"+svc.date+" at "+svc.time
+        : "x You've DECLINED the service.\n\n"+svc.name+"\n"+svc.date+" at "+svc.time+"\n\nAdmin has been notified.";
       alert(msg);
 
       // Send RSVP summary email to admin
@@ -836,7 +908,7 @@ function checkRsvpFromUrl(){
   });
 }
 
-// ── Settings tab (admin only) ──
+// -- Settings tab (admin only) --
 function showSettings(){
   setNav(adminTabs());
 
@@ -850,7 +922,7 @@ function showSettings(){
 
     var h='<h2>⚙️ Settings</h2>';
 
-    /* ── Instruments & Roles ── */
+    /* -- Instruments & Roles -- */
     h+='<div class="card">'+
       '<h3>🎸 Instruments & Roles</h3>'+
       '<p style="color:#999;font-size:13px;margin-top:0">These appear when members pick their role and when admin assigns the team.</p>'+
@@ -872,7 +944,7 @@ function showSettings(){
       '<div id="inst-msg" style="margin-top:8px"></div>'+
       '</div>';
 
-    /* ── Reminder Schedule ── */
+    /* -- Reminder Schedule -- */
     ref.child("settings/reminder").once("value").then(function(rSnap){
       var rs = rSnap.val() || { days:["monday","friday"], hourPST:8, minutePST:0 };
       var selDays = rs.days || ["monday","friday"];
@@ -930,34 +1002,34 @@ function showSettings(){
       });
     });
 
-    /* ── EmailJS ── */
+    /* -- EmailJS -- */
     h+='<div class="card" id="email-section">'+
       '<h3>📧 Email Notifications (EmailJS)</h3>'+
       '<div style="background:#fff3e0;padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px">'+
       '<b>Setup steps:</b><br>'+
-      '1. Go to <a href="https://www.emailjs.com" target="_blank">emailjs.com</a> → free account<br>'+
-      '2. Add Email Service (Gmail/Outlook) → copy <b>Service ID</b><br>'+
-      '3. Create <b>two templates</b> (see below) → copy Template IDs<br>'+
-      '4. Go to Account → copy <b>Public Key</b><br>'+
+      '1. Go to <a href="https://www.emailjs.com" target="_blank">emailjs.com</a> -> free account<br>'+
+      '2. Add Email Service (Gmail/Outlook) -> copy <b>Service ID</b><br>'+
+      '3. Create <b>two templates</b> (see below) -> copy Template IDs<br>'+
+      '4. Go to Account -> copy <b>Public Key</b><br>'+
       '5. Paste all below and click Save'+
       '</div>'+
       '<label>EmailJS Public Key</label>'+
       '<input id="ejs-pub" placeholder="e.g. user_xxxxxxxxxxxxxxx" value="'+(cfg.publicKey||"")+'">'+
       '<label>Service ID</label>'+
       '<input id="ejs-svc" placeholder="e.g. service_xxxxxxx" value="'+(cfg.serviceId||"")+'">'+
-      '<label>Template ID — Member Notification</label>'+
+      '<label>Template ID - Member Notification</label>'+
       '<input id="ejs-tm" placeholder="e.g. template_member01" value="'+(cfg.templateIdMember||"")+'">'+
       '<div style="font-size:11px;color:#999;margin:-4px 0 8px">'+
       'Variables: {{to_name}}, {{to_email}}, {{instrument}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{team_list}}, {{accept_url}}, {{deny_url}}'+
       '</div>'+
-      '<label>Template ID — Admin RSVP Summary</label>'+
+      '<label>Template ID - Admin RSVP Summary</label>'+
       '<input id="ejs-ta" placeholder="e.g. template_admin01" value="'+(cfg.templateIdAdmin||"")+'">'+
       '<div style="font-size:11px;color:#999;margin:-4px 0 8px">'+
       'Variables: {{member_name}}, {{rsvp_status}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{accepted_list}}, {{denied_list}}, {{pending_list}}'+
       '</div>'+
 
       '<div style="background:#e8f5e9;padding:10px;border-radius:6px;margin:8px 0;font-size:13px">'+
-      '✅ <b>Reminder emails reuse the Member Notification template</b> — no extra template needed! '+
+      'ok <b>Reminder emails reuse the Member Notification template</b> - no extra template needed! '+
       'A <code>{{is_reminder}}</code> variable is passed so your template can show "REMINDER:" in the subject.'+
       '</div>'+
 
@@ -980,17 +1052,17 @@ function showSettings(){
       '⏰ Time: {{svc_time}}\n\n'+
       '👥 Full Team:\n{{team_list}}\n\n'+
       'Please respond:\n'+
-      '✅ ACCEPT: {{accept_url}}\n'+
-      '❌ DECLINE: {{deny_url}}\n\n'+
+      'ok ACCEPT: {{accept_url}}\n'+
+      'x DECLINE: {{deny_url}}\n\n'+
       'God bless,\nWorship Team Admin'+
       '</pre></details>'+
       '<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent)">Admin RSVP Summary Template</summary>'+
       '<pre style="font-size:11px;white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:4px;margin-top:8px">'+
       'Subject: RSVP Update: {{member_name}} {{rsvp_status}}\n\n'+
       '{{member_name}} has {{rsvp_status}} for {{svc_name}} on {{svc_date}}.\n\n'+
-      '✅ Accepted:\n{{accepted_list}}\n\n'+
-      '❌ Declined:\n{{denied_list}}\n\n'+
-      '⏳ Pending:\n{{pending_list}}'+
+      'ok Accepted:\n{{accepted_list}}\n\n'+
+      'x Declined:\n{{denied_list}}\n\n'+
+      '... Pending:\n{{pending_list}}'+
       '</pre></details>'+
       '<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent)">💡 How to handle reminders with only 2 templates</summary>'+
       '<div style="background:var(--bg);padding:12px;border-radius:4px;margin-top:8px;font-size:12px">'+
@@ -999,7 +1071,7 @@ function showSettings(){
       'In EmailJS you can use conditional subject lines like:<br>'+
       '<code>{{#is_reminder}}⏰ REMINDER: {{/is_reminder}}You\'ve been assigned to {{svc_name}}</code><br><br>'+
       'Or simply use a subject like:<br>'+
-      '<code>Worship Assignment — {{svc_name}} on {{svc_date}}</code><br>'+
+      '<code>Worship Assignment - {{svc_name}} on {{svc_date}}</code><br>'+
       'which works for both first notification and reminders.'+
       '</div></details>'+
       '</div>';
@@ -1053,12 +1125,12 @@ function saveInstruments(){
   var list=getCurrentInstList();
   if(!list.length){ alert("Add at least one instrument"); return; }
   var msg=document.getElementById("inst-msg");
-  msg.innerHTML='<div class="msg-info">⏳ Saving...</div>';
+  msg.innerHTML='<div class="msg-info">... Saving...</div>';
   ref.child("settings/instruments").set(list).then(function(){
     INST=list; // update live in this session
-    msg.innerHTML='<div class="msg-ok">✅ Saved! Members will see updated list on next login.</div>';
+    msg.innerHTML='<div class="msg-ok">ok Saved! Members will see updated list on next login.</div>';
   }).catch(function(e){
-    msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+    msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
   });
 }
 
@@ -1072,9 +1144,9 @@ function saveEmailSettings(){
   var msg = document.getElementById("settings-msg");
 
   if(!pub||!svc||!tm||!ta){
-    msg.innerHTML='<div class="msg-err">❌ Fill Public Key, Service ID and both Template IDs</div>'; return;
+    msg.innerHTML='<div class="msg-err">x Fill Public Key, Service ID and both Template IDs</div>'; return;
   }
-  msg.innerHTML='<div class="msg-info">⏳ Saving...</div>';
+  msg.innerHTML='<div class="msg-info">... Saving...</div>';
 
   ref.child("settings/emailjs").set({
     publicKey:pub, serviceId:svc,
@@ -1082,9 +1154,9 @@ function saveEmailSettings(){
     appUrl:url
   }).then(function(){
     initEmailJS(pub);
-    msg.innerHTML='<div class="msg-ok">✅ Email settings saved!</div>';
+    msg.innerHTML='<div class="msg-ok">ok Email settings saved!</div>';
   }).catch(function(e){
-    msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+    msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
   });
 }
 
@@ -1105,9 +1177,9 @@ function saveReminderSchedule(){
   var msg    = document.getElementById("remind-msg");
 
   if(!days.length){
-    msg.innerHTML='<div class="msg-err">❌ Select at least one day</div>'; return;
+    msg.innerHTML='<div class="msg-err">x Select at least one day</div>'; return;
   }
-  msg.innerHTML='<div class="msg-info">⏳ Saving...</div>';
+  msg.innerHTML='<div class="msg-info">... Saving...</div>';
 
   ref.child("settings/reminder").set({
     days:    days,
@@ -1117,9 +1189,9 @@ function saveReminderSchedule(){
     var dayLabels = days.map(function(d){return d.charAt(0).toUpperCase()+d.slice(1);}).join(", ");
     var h12  = hour>12?hour-12:(hour||12);
     var ampm = hour>=12?"PM":"AM";
-    msg.innerHTML='<div class="msg-ok">✅ Reminders set for <b>'+dayLabels+'</b> at <b>'+h12+':00 '+ampm+' PST</b></div>';
+    msg.innerHTML='<div class="msg-ok">ok Reminders set for <b>'+dayLabels+'</b> at <b>'+h12+':00 '+ampm+' PST</b></div>';
   }).catch(function(e){
-    msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+    msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
   });
 }
 
@@ -1127,7 +1199,7 @@ function editSvcSongs(sid){
   setNav(adminTabs());
   render('<div class="card">Loading...</div>');
   ref.child("services/"+sid).once("value").then(function(ss){
-    var s=ss.val(); if(!s) return showPlan();
+    var s=ss.val(); if(!s) return showHome();
     ref.child("songs").once("value").then(function(songSnap){
       var allSongs=songSnap.val()||{};
       var assignedSongs=s.songs||{};
@@ -1153,8 +1225,8 @@ function editSvcSongs(sid){
         h+='</select>';
       }
       h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px">'+
-        '<button onclick="editSvc(\''+sid+'\')">← Team</button>'+
-        '<button class="sec" onclick="showPlan()">← Services</button></div></div>';
+        '<button onclick="editSvc(\''+sid+'\')"><- Team</button>'+
+        '<button class="sec" onclick="showHome()"><- Services</button></div></div>';
       render(h);
     });
   });
@@ -1197,7 +1269,7 @@ function showSongs(){
         '<input type="file" id="chord-file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp" onchange="loadChordFile(this)">'+
         '<div id="chord-file-preview" style="font-size:12px;color:#999;margin-top:4px"></div>'+
 
-        '<label>Lyrics File (PDF / image / txt) — or paste below</label>'+
+        '<label>Lyrics File (PDF / image / txt) - or paste below</label>'+
         '<input type="file" id="lyric-file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp" onchange="loadLyricFile(this)">'+
         '<div id="lyric-file-preview" style="font-size:12px;color:#999;margin-top:4px"></div>'+
 
@@ -1260,7 +1332,7 @@ function renderFilePreview(dataUrl, fileType){
   return '<pre style="font-size:11px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+escHtml(dataUrl)+'</pre>';
 }
 
-// ── File loading ──
+// -- File loading --
 function loadChordFile(input){
   var file = input.files[0];
   if(!file) return;
@@ -1273,20 +1345,20 @@ function loadChordFile(input){
       var txt = e.target.result;
       document.getElementById("schords").value = txt;
       transposePreview();
-      preview.textContent = "✅ Loaded: "+file.name;
+      preview.textContent = "ok Loaded: "+file.name;
       window._chordFileData = txt;
       window._chordFileType = "text/plain";
     };
     reader.readAsText(file);
   } else {
-    // PDF or image — store as base64
+    // PDF or image - store as base64
     var reader = new FileReader();
     reader.onload = function(e){
       window._chordFileData = e.target.result;
       window._chordFileType = file.type;
       preview.innerHTML = file.type.startsWith("image/")
-        ? '✅ '+file.name+' — <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
-        : '✅ '+file.name+' (PDF — will be stored with song)';
+        ? 'ok '+file.name+' - <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
+        : 'ok '+file.name+' (PDF - will be stored with song)';
     };
     reader.readAsDataURL(file);
   }
@@ -1303,7 +1375,7 @@ function loadLyricFile(input){
     reader.onload = function(e){
       var txt = e.target.result;
       document.getElementById("sly").value = txt;
-      preview.textContent = "✅ Loaded: "+file.name;
+      preview.textContent = "ok Loaded: "+file.name;
       window._lyricFileData = txt;
       window._lyricFileType = "text/plain";
     };
@@ -1314,14 +1386,14 @@ function loadLyricFile(input){
       window._lyricFileData = e.target.result;
       window._lyricFileType = file.type;
       preview.innerHTML = file.type.startsWith("image/")
-        ? '✅ '+file.name+' — <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
-        : '✅ '+file.name+' (PDF)';
+        ? 'ok '+file.name+' - <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
+        : 'ok '+file.name+' (PDF)';
     };
     reader.readAsDataURL(file);
   }
 }
 
-// ── Key transposition ──
+// -- Key transposition --
 var CHROMATIC = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 var CHORD_NAMES = {
   "C":0,"C#":1,"Db":1,"D":2,"D#":3,"Eb":3,"E":4,"F":5,
@@ -1362,7 +1434,7 @@ function buildNumberChart(chordText, key){
     var s = CHORD_NAMES[root];
     if(s===undefined) return match;
     var degree = scale.indexOf(s);
-    if(degree===-1) return match; // chromatic — leave as chord name
+    if(degree===-1) return match; // chromatic - leave as chord name
     var num = degree+1;
     var isMinor = suffix&&(suffix[0]==="m"||suffix.indexOf("min")===0);
     return num+(isMinor?"m":"")+(suffix&&!isMinor?suffix:"");
@@ -1411,7 +1483,7 @@ function onKeyChange(selectEl){
   transposePreview();
 }
 
-// ── Edit/Transpose existing song ──
+// -- Edit/Transpose existing song --
 function editSongKey(songId){
   if(!fbReady) return;
   ref.child("songs/"+songId).once("value").then(function(snap){
@@ -1426,7 +1498,7 @@ function editSongKey(songId){
       '</select>'+
       '<div id="transpose-preview" style="margin-top:14px"></div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px">'+
-        '<button onclick="applyTranspose(\''+songId+'\',\''+sg.key+'\')" style="background:#28a745">✅ Save Transposed</button>'+
+        '<button onclick="applyTranspose(\''+songId+'\',\''+sg.key+'\')" style="background:#28a745">ok Save Transposed</button>'+
         '<button class="sec" onclick="showSongs()">Cancel</button>'+
       '</div>'+
     '</div>';
@@ -1452,7 +1524,7 @@ function showTransposePreview(sg){
   if(!box) return;
 
   if(newKey===fromKey){
-    box.innerHTML='<div style="color:#999;font-size:13px">Same key — no change</div>';
+    box.innerHTML='<div style="color:#999;font-size:13px">Same key - no change</div>';
     return;
   }
 
@@ -1491,7 +1563,7 @@ function applyTranspose(songId, fromKey){
     chords:      newChords||"",
     numberChart: newNC||""
   }).then(function(){
-    alert("✅ Transposed to "+newKey+" and saved!");
+    alert("ok Transposed to "+newKey+" and saved!");
     showSongs();
   });
 }
@@ -1583,7 +1655,7 @@ function showMy(){
       // RSVP status
       var rsvpStatus = (s.rsvp&&s.rsvp[me]) ? s.rsvp[me] : "pending";
       var rsvpColor  = rsvpStatus==="accepted"?"#2e7d32":rsvpStatus==="denied"?"#c62828":"#e65100";
-      var rsvpLabel  = rsvpStatus==="accepted"?"✅ Accepted":rsvpStatus==="denied"?"❌ Declined":"⏳ Pending Response";
+      var rsvpLabel  = rsvpStatus==="accepted"?"ok Accepted":rsvpStatus==="denied"?"x Declined":"... Pending Response";
 
       // Team list
       var teamByInst={};
@@ -1617,13 +1689,13 @@ function showMy(){
       if(rsvpStatus==="pending"){
         h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;padding:12px;background:#fff3e0;border-radius:8px">'+
           '<div style="grid-column:1/3;font-size:13px;font-weight:bold;color:#e65100;margin-bottom:4px">Please respond to this assignment:</div>'+
-          '<button onclick="rsvpService(\''+k+'\',\'accepted\')" style="background:#28a745;margin:0;padding:12px">✅ Accept</button>'+
-          '<button onclick="rsvpService(\''+k+'\',\'denied\')" style="background:#c23b22;margin:0;padding:12px">❌ Decline</button>'+
+          '<button onclick="rsvpService(\''+k+'\',\'accepted\')" style="background:#28a745;margin:0;padding:12px">ok Accept</button>'+
+          '<button onclick="rsvpService(\''+k+'\',\'denied\')" style="background:#c23b22;margin:0;padding:12px">x Decline</button>'+
           '</div>';
       } else {
         h+='<div style="margin:8px 0">'+
           '<button class="sec" onclick="rsvpService(\''+k+'\',\''+(rsvpStatus==="accepted"?"denied":"accepted")+'\')" style="padding:8px;font-size:12px">'+
-          (rsvpStatus==="accepted"?"Change to ❌ Decline":"Change to ✅ Accept")+
+          (rsvpStatus==="accepted"?"Change to x Decline":"Change to ok Accept")+
           '</button></div>';
       }
 
@@ -1811,9 +1883,9 @@ function showTeam(){
       var u=users[k];
       if(u.status==="approved"){
         found=true;
-        var icon=u.role==="admin"?"👑":u.role==="co-admin"?"⭐":"👤";
+        var icon=u.role==="admin"?"":u.role==="co-admin"?"*":"";
         h+='<div class="card"><b>'+icon+' '+u.name+'</b><br>'+
-          '<small style="color:#999">'+(u.inst&&u.inst.length?u.inst.join(", "):"—")+'</small></div>';
+          '<small style="color:#999">'+(u.inst&&u.inst.length?u.inst.join(", "):"-")+'</small></div>';
       }
     }
     if(!found) h='<h2>Team Members</h2><div class="card" style="text-align:center;color:#999">No members yet</div>';
@@ -1837,7 +1909,7 @@ function showProfile(){
     var inst = res[1].val()&&Array.isArray(res[1].val()) ? res[1].val() : INST;
     var sel  = u.inst||[];
 
-    var roleIcon = u.role==="admin"?"👑":u.role==="co-admin"?"⭐":"👤";
+    var roleIcon = u.role==="admin"?"":u.role==="co-admin"?"*":"";
 
     var h='<h2>'+roleIcon+' My Profile</h2>';
 
@@ -1902,12 +1974,12 @@ function saveProfileInst(){
   var sel = window._profileInst||[];
   if(!sel.length){ alert("Select at least one instrument"); return; }
   var msg = document.getElementById("inst-profile-msg");
-  msg.innerHTML='<div class="msg-info">⏳ Saving...</div>';
+  msg.innerHTML='<div class="msg-info">... Saving...</div>';
   ref.child("users/"+uid()+"/inst").set(sel).then(function(){
     sessionStorage.setItem("inst", sel.join("|"));
-    msg.innerHTML='<div class="msg-ok">✅ Instruments saved!</div>';
+    msg.innerHTML='<div class="msg-ok">ok Instruments saved!</div>';
   }).catch(function(e){
-    msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+    msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
   });
 }
 
@@ -1921,23 +1993,23 @@ function saveProfile(){
   var msg    = document.getElementById("profile-msg");
 
   if(!name||!email||!phone){
-    msg.innerHTML='<div class="msg-err">❌ Name, email and phone are required</div>'; return;
+    msg.innerHTML='<div class="msg-err">x Name, email and phone are required</div>'; return;
   }
   if(!curpw){
-    msg.innerHTML='<div class="msg-err">❌ Enter your current password to save changes</div>'; return;
+    msg.innerHTML='<div class="msg-err">x Enter your current password to save changes</div>'; return;
   }
   if(newpw&&newpw.length<4){
-    msg.innerHTML='<div class="msg-err">❌ New password must be 4+ characters</div>'; return;
+    msg.innerHTML='<div class="msg-err">x New password must be 4+ characters</div>'; return;
   }
   if(newpw&&newpw!==confpw){
-    msg.innerHTML='<div class="msg-err">❌ New passwords do not match</div>'; return;
+    msg.innerHTML='<div class="msg-err">x New passwords do not match</div>'; return;
   }
 
-  msg.innerHTML='<div class="msg-info">⏳ Verifying...</div>';
+  msg.innerHTML='<div class="msg-info">... Verifying...</div>';
 
   ref.child("users/"+uid()+"/pass").once("value").then(function(snap){
     if(snap.val()!==curpw){
-      msg.innerHTML='<div class="msg-err">❌ Current password is incorrect</div>'; return;
+      msg.innerHTML='<div class="msg-err">x Current password is incorrect</div>'; return;
     }
     var updates = { name:name, email:email, phone:phone };
     if(newpw) updates.pass = newpw;
@@ -1945,9 +2017,9 @@ function saveProfile(){
       logActivity("profile_updated","Updated profile");
       sessionStorage.setItem("name", name);
       setHeader();
-      msg.innerHTML='<div class="msg-ok">✅ Profile updated successfully!</div>';
+      msg.innerHTML='<div class="msg-ok">ok Profile updated successfully!</div>';
     }).catch(function(e){
-      msg.innerHTML='<div class="msg-err">❌ '+e.message+'</div>';
+      msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
     });
   });
 }
@@ -1957,7 +2029,7 @@ function deleteOwnAccount(){
   var curpw = prompt("Enter your password to confirm:");
   if(!curpw) return;
   ref.child("users/"+uid()+"/pass").once("value").then(function(snap){
-    if(snap.val()!==curpw){ alert("❌ Password incorrect."); return; }
+    if(snap.val()!==curpw){ alert("x Password incorrect."); return; }
     ref.child("users/"+uid()).remove().then(function(){
       alert("Your account has been deleted.");
       logout();
@@ -1983,13 +2055,13 @@ function showLog(){
 
     var ACTION_ICONS={
       login:"🔑", logout:"🚪",
-      user_approved:"✅", user_rejected:"❌",
-      promoted_coadmin:"⭐", demoted_coadmin:"⬇",
+      user_approved:"ok", user_rejected:"x",
+      promoted_coadmin:"*", demoted_coadmin:"⬇",
       service_created:"📅", service_deleted:"🗑",
       member_assigned:"👥", member_removed:"✂️",
       rsvp_response:"📬",
       song_added:"🎵", song_deleted:"🗑",
-      profile_updated:"👤"
+      profile_updated:""
     };
 
     var ACTION_LABELS={
