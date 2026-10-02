@@ -519,7 +519,7 @@ function showManage(){
         h+='<div class="card pending"><b>'+u.name+'</b>'+
           '<div style="font-size:12px;margin:8px 0;color:#666">📧 '+u.email+'<br>📱 '+u.phone+'</div>'+
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-          '<button class="green" style="margin:0" onclick="approveUser(\''+u._id+'\',\''+u.name+'\')">ok Approve</button>'+
+          '<button class="green" style="margin:0" onclick="approveUser(\''+u._id+'\',\''+u.name+'\')">✓ Approve</button>'+
           '<button class="red" style="margin:0" onclick="rejectUser(\''+u._id+'\',\''+u.name+'\')">✗ Reject</button>'+
           '</div></div>';
       });
@@ -740,7 +740,7 @@ function editSvc(id){
           '<b style="font-size:13px">📬 RSVP Status</b>'+
           '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">'+
           '<div style="background:#e8f5e9;padding:8px;border-radius:6px;border-left:3px solid #28a745">'+
-            '<div style="font-size:11px;font-weight:bold;color:#2e7d32">ok ACCEPTED ('+rsvpAccepted.length+')</div>'+
+            '<div style="font-size:11px;font-weight:bold;color:#2e7d32">✅ ACCEPTED ('+rsvpAccepted.length+')</div>'+
             rsvpAccepted.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
             (!rsvpAccepted.length?'<div style="font-size:12px;color:#999">-</div>':'')+
           '</div>'+
@@ -780,12 +780,12 @@ function editSvc(id){
           if(users[aid]){
             var memberRsvp = rsvpData[aid]||"pending";
             var rBadge = memberRsvp==="accepted"
-              ? '<span style="font-size:10px;background:#28a745;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">ok Accepted</span>'
+              ? '<span style="font-size:10px;background:#28a745;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">✅ Accepted</span>'
               : memberRsvp==="denied"
               ? '<span style="font-size:10px;background:#c62828;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">x Declined</span>'
               : '<span style="font-size:10px;background:#ff9800;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">... Pending</span>';
             h+='<div style="background:var(--accent);color:#fff;padding:8px 10px;margin:4px 0;display:flex;justify-content:space-between;align-items:center;border-radius:6px;font-size:13px">'+
-              '<span>ok '+users[aid].name+rBadge+'</span>'+
+              '<span>✓ '+users[aid].name+rBadge+'</span>'+
               '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" onclick="delAssign(\''+id+'\',\''+ins+'\',\''+aid+'\')">Remove</button></div>';
           }
         }
@@ -803,7 +803,7 @@ function editSvc(id){
         // Show available members as green chips (clickable to assign)
         if(availMembers.length){
           h+='<div style="margin-top:8px">';
-          h+='<div style="font-size:11px;color:#2e7d32;margin-bottom:4px">ok Available (tap to assign)</div>';
+          h+='<div style="font-size:11px;color:#2e7d32;margin-bottom:4px">✅ Available (tap to assign)</div>';
           availMembers.forEach(function(m){
             h+='<span onclick="addAssign(\''+id+'\',\''+ins+'\',\''+m.id+'\')" '+
               'style="display:inline-block;margin:3px;padding:6px 12px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:20px;font-size:13px;cursor:pointer">'+
@@ -1844,7 +1844,7 @@ function editSongKey(songId){
       '</select>'+
       '<div id="transpose-preview" style="margin-top:14px"></div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px">'+
-        '<button onclick="applyTranspose(\''+songId+'\',\''+sg.key+'\')" style="background:#28a745">ok Save Transposed</button>'+
+        '<button onclick="applyTranspose(\''+songId+'\',\''+sg.key+'\')" style="background:#28a745">✅ Save Transposed</button>'+
         '<button class="sec" onclick="showSongs()">Cancel</button>'+
       '</div>'+
     '</div>';
@@ -2035,13 +2035,13 @@ function showMy(){
       if(rsvpStatus==="pending"){
         h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;padding:12px;background:#fff3e0;border-radius:8px">'+
           '<div style="grid-column:1/3;font-size:13px;font-weight:bold;color:#e65100;margin-bottom:4px">Please respond to this assignment:</div>'+
-          '<button onclick="rsvpService(\''+k+'\',\'accepted\')" style="background:#28a745;margin:0;padding:12px">ok Accept</button>'+
+          '<button onclick="rsvpService(\''+k+'\',\'accepted\')" style="background:#28a745;margin:0;padding:12px">✅ Accept</button>'+
           '<button onclick="rsvpService(\''+k+'\',\'denied\')" style="background:#c23b22;margin:0;padding:12px">x Decline</button>'+
           '</div>';
       } else {
         h+='<div style="margin:8px 0">'+
           '<button class="sec" onclick="rsvpService(\''+k+'\',\''+(rsvpStatus==="accepted"?"denied":"accepted")+'\')" style="padding:8px;font-size:12px">'+
-          (rsvpStatus==="accepted"?"Change to x Decline":"Change to ok Accept")+
+          (rsvpStatus==="accepted"?"Change to ❌ Decline":"Change to ✅ Accept")+
           '</button></div>';
       }
 
