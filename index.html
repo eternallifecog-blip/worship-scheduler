@@ -47,6 +47,7 @@ nav button{margin:0;padding:8px 12px;width:auto;font-size:13px}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
 var db, ref;
 var fbReady = false;
@@ -407,6 +408,35 @@ function showMemberHome(){
         });
         h+='</div>';
       }
+
+      // PDF files section for members
+      var svcPdfs = s.pdfs||{};
+      var combinedPdf = s.combinedPdf||null;
+      var pdfKeys = Object.keys(svcPdfs);
+      if(pdfKeys.length || combinedPdf){
+        h+='<div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:6px">'+
+          '<b style="font-size:12px">📄 Service PDF Files</b>';
+
+        // Combined PDF first (most useful)
+        if(combinedPdf){
+          h+='<a href="'+combinedPdf+'" target="_blank" style="display:block;margin:8px 0 4px;padding:10px 14px;background:#28a745;color:#fff;border-radius:6px;text-decoration:none;text-align:center;font-size:13px;font-weight:bold">'+
+            '📦 View Combined PDF (All Files)</a>';
+        }
+
+        // Individual PDFs
+        if(pdfKeys.length){
+          h+='<div style="margin-top:6px">';
+          pdfKeys.forEach(function(pk){
+            var pdf=svcPdfs[pk];
+            h+='<a href="'+pdf.data+'" target="_blank" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--card);border:1px solid var(--line);border-radius:6px;margin:4px 0;text-decoration:none;color:var(--ink)">'+
+              '<span style="font-size:13px">📄 '+pdf.name+'</span>'+
+              '<span style="font-size:11px;color:#999">'+Math.round(pdf.size/1024)+' KB</span></a>';
+          });
+          h+='</div>';
+        }
+        h+='</div>';
+      }
+
       h+='</div>';
     });
     if(!found){
@@ -1201,42 +1231,231 @@ function editSvcSongs(sid){
   ref.child("services/"+sid).once("value").then(function(ss){
     var s=ss.val(); if(!s) return showHome();
     ref.child("songs").once("value").then(function(songSnap){
-      var allSongs=songSnap.val()||{};
-      var assignedSongs=s.songs||{};
-      var h='<div class="card"><h2>🎵 Setlist for '+s.name+'</h2><small style="color:#999">'+s.date+' at '+s.time+'</small>';
-      h+='<div style="margin-top:14px"><label><b>Assigned Songs</b></label>';
+      var allSongs = songSnap.val()||{};
+      var assignedSongs = s.songs||{};
+      var svcPdfs = s.pdfs||{};
+      var combinedPdf = s.combinedPdf||null;
+
+      var h='<div class="card"><h2>🎵 Songs & Files — '+s.name+'</h2>'+
+        '<small style="color:#999">'+s.date+' at '+s.time+'</small>';
+
+      /* ── Assigned Songs from Library ── */
+      h+='<div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px">'+
+        '<label style="margin:0"><b>🎵 Songs from Library</b></label>';
       var hasSongs=false;
       for(var sk in assignedSongs){
         hasSongs=true;
-        h+='<div style="display:flex;justify-content:space-between;align-items:center;background:var(--accent);color:#fff;padding:8px 12px;border-radius:6px;margin:4px 0;font-size:13px">'+
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;'+
+          'background:var(--accent);color:#fff;padding:8px 12px;border-radius:6px;margin:6px 0;font-size:13px">'+
           '<span>🎵 '+assignedSongs[sk]+'</span>'+
-          '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" onclick="removeSvcSong(\''+sid+'\',\''+sk+'\')">Remove</button></div>';
+          '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" '+
+          'onclick="removeSvcSong(\''+sid+'\',\''+sk+'\')">Remove</button></div>';
       }
-      if(!hasSongs) h+='<div style="color:#999;font-size:13px;padding:8px">No songs yet</div>';
-      h+='</div>';
+      if(!hasSongs) h+='<div style="color:#999;font-size:12px;padding:6px">No songs added yet</div>';
+
+      // Add from library dropdown
       var libKeys=Object.keys(allSongs);
       if(libKeys.length){
-        h+='<label style="margin-top:16px"><b>Add from Library</b></label>'+
-          '<select onchange="addSvcSong(\''+sid+'\',this.value,this.options[this.selectedIndex].text);this.value=\'\'">'+
-          '<option value="">+ Pick from library...</option>';
+        h+='<select onchange="addSvcSong(\''+sid+'\',this.value,this.options[this.selectedIndex].text);this.value=\'\'" style="margin-top:8px">'+
+          '<option value="">+ Add from song library...</option>';
         libKeys.forEach(function(k){
           if(!assignedSongs[k]) h+='<option value="'+k+'">'+allSongs[k].title+' ('+allSongs[k].key+')</option>';
         });
         h+='</select>';
       }
+      h+='</div>';
+
+      /* ── PDF Files ── */
+      h+='<div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px">'+
+        '<label style="margin:0"><b>📄 PDF Files (Chords / Numbers / Lyrics)</b></label>'+
+        '<p style="font-size:12px;color:#999;margin:4px 0 10px">Upload multiple PDFs. Team members can view each file and the combined PDF.</p>';
+
+      // Existing uploaded PDFs
+      var pdfKeys=Object.keys(svcPdfs);
+      if(pdfKeys.length){
+        pdfKeys.forEach(function(pk){
+          var pdf=svcPdfs[pk];
+          h+='<div style="display:flex;justify-content:space-between;align-items:center;'+
+            'background:var(--card);border:1px solid var(--line);padding:8px 12px;border-radius:6px;margin:4px 0">'+
+            '<div>'+
+              '<span style="font-size:13px">📄 '+pdf.name+'</span>'+
+              '<span style="font-size:11px;color:#999;margin-left:8px">'+Math.round(pdf.size/1024)+' KB</span>'+
+            '</div>'+
+            '<div style="display:flex;gap:6px">'+
+              '<a href="'+pdf.data+'" target="_blank" style="font-size:11px;padding:4px 8px;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none">View</a>'+
+              '<button onclick="removeSvcPdf(\''+sid+'\',\''+pk+'\')" style="width:auto;padding:4px 8px;margin:0;font-size:11px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:4px">✕ Remove</button>'+
+            '</div></div>';
+        });
+      } else {
+        h+='<div style="color:#999;font-size:12px;padding:6px">No PDFs uploaded yet</div>';
+      }
+
+      // Upload button
+      h+='<div style="margin-top:10px">'+
+        '<input type="file" id="svc-pdf-upload" accept=".pdf" multiple '+
+          'onchange="uploadSvcPdfs(\''+sid+'\')" style="margin:0">'+
+        '<div id="pdf-upload-status" style="font-size:12px;color:#999;margin-top:4px"></div>'+
+        '</div>';
+
+      // Combined PDF section
+      h+='<div style="margin-top:14px;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
+        '<div>'+
+          '<b style="font-size:13px">📦 Combined PDF</b>'+
+          '<div style="font-size:11px;color:#999;margin-top:2px">Merge all uploaded PDFs into one file for easy sharing</div>'+
+        '</div>';
+
+      if(combinedPdf){
+        h+='<a href="'+combinedPdf+'" target="_blank" style="padding:6px 12px;background:#28a745;color:#fff;border-radius:6px;text-decoration:none;font-size:13px">📥 View Combined</a>';
+      }
+
+      h+='</div>'+
+        (pdfKeys.length>0
+          ? '<button onclick="combineSvcPdfs(\''+sid+'\')" style="margin-top:10px;background:#5c6bc0">'+
+            '🔗 Combine All PDFs into One</button>'+
+            '<div id="combine-status" style="font-size:12px;margin-top:6px"></div>'
+          : '<div style="font-size:12px;color:#999;margin-top:8px">Upload PDFs above to enable combining</div>'
+        )+
+        '</div>';
+      h+='</div>';
+
+      /* ── Back buttons ── */
       h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px">'+
-        '<button onclick="editSvc(\''+sid+'\')"><- Team</button>'+
-        '<button class="sec" onclick="showHome()"><- Services</button></div></div>';
+        '<button onclick="editSvc(\''+sid+'\')">← Team</button>'+
+        '<button class="sec" onclick="showHome()">← Back</button></div></div>';
+
       render(h);
     });
   });
 }
+
 function addSvcSong(sid,songId,title){
   if(!songId) return;
   ref.child("services/"+sid+"/songs/"+songId).set(title.split(' (')[0]).then(function(){editSvcSongs(sid);});
 }
 function removeSvcSong(sid,songId){
   ref.child("services/"+sid+"/songs/"+songId).remove().then(function(){editSvcSongs(sid);});
+}
+
+// ── Upload multiple PDFs to a service ──
+function uploadSvcPdfs(sid){
+  var input = document.getElementById("svc-pdf-upload");
+  var files = Array.from(input.files);
+  if(!files.length) return;
+  var status = document.getElementById("pdf-upload-status");
+  status.textContent = "Uploading "+files.length+" file(s)...";
+
+  var promises = files.map(function(file){
+    return new Promise(function(resolve, reject){
+      // Check size — Firebase has 10MB node limit; warn if too big
+      if(file.size > 5 * 1024 * 1024){
+        status.textContent = "Warning: "+file.name+" is large (>5MB). Uploading may be slow.";
+      }
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var id = "pdf_"+Math.random().toString(36).substr(2,9);
+        ref.child("services/"+sid+"/pdfs/"+id).set({
+          name: file.name,
+          size: file.size,
+          data: e.target.result,
+          uploadedAt: Date.now()
+        }, function(err){
+          if(err) reject(err);
+          else resolve(file.name);
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  });
+
+  Promise.all(promises).then(function(names){
+    status.textContent = "✅ Uploaded: "+names.join(", ");
+    // Clear combined PDF since new files were added
+    ref.child("services/"+sid+"/combinedPdf").remove();
+    setTimeout(function(){ editSvcSongs(sid); }, 800);
+  }).catch(function(e){
+    status.textContent = "❌ Error: "+e.message;
+  });
+}
+
+function removeSvcPdf(sid, pdfId){
+  if(!confirm("Remove this PDF?")) return;
+  ref.child("services/"+sid+"/pdfs/"+pdfId).remove().then(function(){
+    // Remove combined PDF too since files changed
+    ref.child("services/"+sid+"/combinedPdf").remove().then(function(){
+      editSvcSongs(sid);
+    });
+  });
+}
+
+// ── Combine all service PDFs into one using pdf-lib ──
+async function combineSvcPdfs(sid){
+  var statusEl = document.getElementById("combine-status");
+  statusEl.innerHTML = '<span style="color:#e65100">⏳ Loading PDFs...</span>';
+
+  try {
+    // Check pdf-lib is loaded
+    if(typeof PDFLib === "undefined"){
+      statusEl.innerHTML = '<span style="color:#c62828">❌ PDF library not loaded. Check internet connection.</span>';
+      return;
+    }
+
+    var snap = await ref.child("services/"+sid+"/pdfs").once("value");
+    var pdfs = snap.val();
+    if(!pdfs || !Object.keys(pdfs).length){
+      statusEl.innerHTML = '<span style="color:#c62828">❌ No PDFs to combine</span>';
+      return;
+    }
+
+    var pdfKeys = Object.keys(pdfs).sort(function(a,b){
+      return (pdfs[a].uploadedAt||0) - (pdfs[b].uploadedAt||0);
+    });
+
+    statusEl.innerHTML = '<span style="color:#e65100">⏳ Merging '+pdfKeys.length+' PDFs...</span>';
+
+    var mergedPdf = await PDFLib.PDFDocument.create();
+
+    for(var i=0; i<pdfKeys.length; i++){
+      var pdf = pdfs[pdfKeys[i]];
+      statusEl.innerHTML = '<span style="color:#e65100">⏳ Processing '+pdf.name+' ('+(i+1)+'/'+pdfKeys.length+')...</span>';
+
+      // Convert base64 data URL to ArrayBuffer
+      var base64 = pdf.data.split(',')[1];
+      var binary = atob(base64);
+      var bytes = new Uint8Array(binary.length);
+      for(var j=0; j<binary.length; j++) bytes[j] = binary.charCodeAt(j);
+
+      try {
+        var srcPdf = await PDFLib.PDFDocument.load(bytes.buffer);
+        var pages = await mergedPdf.copyPages(srcPdf, srcPdf.getPageIndices());
+        pages.forEach(function(page){ mergedPdf.addPage(page); });
+      } catch(pdfErr){
+        console.warn("Skipping "+pdf.name+": "+pdfErr.message);
+        statusEl.innerHTML = '<span style="color:#e65100">⏳ Skipping corrupted file: '+pdf.name+'</span>';
+      }
+    }
+
+    statusEl.innerHTML = '<span style="color:#e65100">⏳ Saving combined PDF...</span>';
+
+    var mergedBytes = await mergedPdf.save();
+    // Convert back to base64 data URL
+    var mergedArray = new Uint8Array(mergedBytes);
+    var mergedBinary = '';
+    for(var k=0; k<mergedArray.length; k++) mergedBinary += String.fromCharCode(mergedArray[k]);
+    var mergedBase64 = 'data:application/pdf;base64,' + btoa(mergedBinary);
+
+    // Save to Firebase
+    await ref.child("services/"+sid+"/combinedPdf").set(mergedBase64);
+    statusEl.innerHTML = '<span style="color:#28a745">✅ Combined PDF ready! Team members can now view it.</span>';
+
+    // Refresh after short delay to show the View Combined button
+    setTimeout(function(){ editSvcSongs(sid); }, 1200);
+
+  } catch(e) {
+    console.error("Combine error:", e);
+    statusEl.innerHTML = '<span style="color:#c62828">❌ Error: '+e.message+'</span>';
+  }
 }
 
 /* ===== SONGS ===== */
