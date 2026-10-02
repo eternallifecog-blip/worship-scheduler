@@ -166,7 +166,7 @@ function start(){
 }
 
 function adminTabs(){return[["home","Home"],["manage","👥 Users"],["songs","Songs"],["chat","Chat"],["settings","⚙️"],["log","📋 Log"],["profile","👤"],["logout","Logout"]]}
-function memberTabs(){return[["home","Home"],["my","Services"],["songs","Songs"],["avail","Off"],["chat","Chat"],["profile","👤"],["logout","Logout"]]}
+function memberTabs(){return[["home","Home"],["songs","Songs"],["avail","Off"],["chat","Chat"],["profile","👤"],["logout","Logout"]]}
 
 function logout(){
   logActivity("logout","Signed out");
@@ -350,21 +350,27 @@ function showHome(){
 
 function showMemberHome(){
   setNav(memberTabs());
-  render('<h2>Your Upcoming Services</h2><div class="card">Loading...</div>');
+  render('<h2>📅 Your Services</h2><div class="card">Loading...</div>');
   if(!fbReady) return;
   var me=uid();
+
+  // Load services, users, songs AND pdf metadata all at once
   Promise.all([
     ref.child("services").once("value"),
     ref.child("users").once("value"),
-    ref.child("songs").once("value")
+    ref.child("songs").once("value"),
+    ref.child("svcFiles").once("value")   // PDF metadata stored separately
   ]).then(function(results){
-    var svcs  = results[0].val()||{};
-    var users = results[1].val()||{};
-    var songs = results[2].val()||{};
+    var svcs      = results[0].val()||{};
+    var users     = results[1].val()||{};
+    var songs     = results[2].val()||{};
+    var svcFiles  = results[3].val()||{}; // {sid: {pdfs:{...}, combinedPdf:{name,size,...}}}
+
     var today = new Date().toISOString().split("T")[0];
-    var h='<h2>Your Upcoming Services</h2>';
+    var h='<h2>📅 Your Services</h2>';
     var found=false;
     var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
+
     keys.forEach(function(k){
       var s=svcs[k];
       if(s.date<today) return;
@@ -375,72 +381,116 @@ function showMemberHome(){
       }
       if(!myInst.length) return;
       found=true;
+
       var rsvpStatus=(s.rsvp&&s.rsvp[me])||"pending";
       var rsvpColor=rsvpStatus==="accepted"?"#28a745":rsvpStatus==="denied"?"#c62828":"#e65100";
       var rsvpLabel=rsvpStatus==="accepted"?"✅ Accepted":rsvpStatus==="denied"?"❌ Declined":"⏳ Respond";
-      var svcSongs=s.songs?Object.keys(s.songs).map(function(sk){return{id:sk,title:s.songs[sk],data:songs[sk]};}).filter(function(x){return x.title;})  :[];
+      var svcSongs=s.songs?Object.keys(s.songs).map(function(sk){return{id:sk,title:s.songs[sk],data:songs[sk]};}).filter(function(x){return x.title;}):[];
+      var fileData=svcFiles[k]||{};
+      var pdfMeta=fileData.pdfs||{};
+      var combinedMeta=fileData.combinedPdf||null;
+
       h+='<div class="card">';
-      h+='<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">'+
-        '<div><b style="font-size:15px">'+s.name+'</b><br>'+
-        '<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small></div>'+
+
+      // Header row
+      h+='<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px">'+
+        '<div>'+
+          '<b style="font-size:16px">'+s.name+'</b><br>'+
+          '<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small>'+
+        '</div>'+
         '<span style="background:'+rsvpColor+';color:#fff;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:bold;white-space:nowrap">'+rsvpLabel+'</span>'+
         '</div>';
+
+      // Instrument badges
       h+=myInst.map(function(i){return'<span style="background:var(--accent);color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:bold;margin-right:4px">'+i+'</span>';}).join('');
+
+      // RSVP buttons
       if(rsvpStatus==="pending"){
-        h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 4px">'+
+        h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 4px">'+
           '<button onclick="rsvpService(\''+k+'\',\'accepted\')" style="background:#28a745;margin:0;padding:10px">✅ Accept</button>'+
           '<button onclick="rsvpService(\''+k+'\',\'denied\')" style="background:#c23b22;margin:0;padding:10px">❌ Decline</button>'+
           '</div>';
+      } else {
+        h+='<div style="margin:8px 0">'+
+          '<button class="sec" onclick="rsvpService(\''+k+'\','+(rsvpStatus==="accepted"?"'denied'":"'accepted'")+
+          ')" style="width:auto;padding:6px 14px;font-size:12px">'+
+          (rsvpStatus==="accepted"?"Change to ❌ Decline":"Change to ✅ Accept")+
+          '</button></div>';
       }
+
+      // PDFs section — Combined first, then individual
+      var hasPdfs = Object.keys(pdfMeta).length > 0;
+      if(combinedMeta || hasPdfs){
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">📄 Service Files</b>';
+
+        if(combinedMeta){
+          h+='<button onclick="viewPdf(\''+k+'\',\'combined\')" '+
+            'style="display:flex;align-items:center;gap:10px;margin:10px 0 6px;padding:12px 14px;width:100%;'+
+            'background:#28a745;color:#fff;border-radius:8px;border:none;cursor:pointer;font-weight:bold;text-align:left">'+
+            '<span style="font-size:22px">📦</span>'+
+            '<div><div style="font-size:14px">Combined PDF</div>'+
+            '<div style="font-size:11px;opacity:0.85">All files merged · '+Math.round((combinedMeta.size||0)/1024)+' KB</div></div>'+
+            '</button>';
+        }
+
+        if(hasPdfs){
+          Object.keys(pdfMeta).forEach(function(pk){
+            var pm=pdfMeta[pk];
+            h+='<button onclick="viewPdf(\''+k+'\',\''+pk+'\')" '+
+              'style="display:flex;align-items:center;gap:10px;padding:10px 12px;width:100%;'+
+              'background:var(--card);border:1px solid var(--line);border-radius:6px;margin:4px 0;cursor:pointer;text-align:left">'+
+              '<span style="font-size:18px">📄</span>'+
+              '<div style="flex:1;min-width:0">'+
+                '<div style="font-size:13px;font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)">'+pm.name+'</div>'+
+                '<div style="font-size:11px;color:#999">'+Math.round((pm.size||0)/1024)+' KB</div>'+
+              '</div>'+
+              '<span style="font-size:12px;color:var(--accent)">Open ›</span>'+
+            '</button>';
+          });
+        }
+        h+='</div>';
+      }
+
+      // Songs section
       if(svcSongs.length){
-        h+='<div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:6px">'+
-          '<b style="font-size:12px">🎵 Songs</b>';
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">🎵 Songs</b>';
         svcSongs.forEach(function(sg){
-          h+='<div style="margin-top:6px;padding:8px;background:var(--card);border-radius:4px;border-left:3px solid var(--accent)">'+
-            '<b style="font-size:13px">'+sg.title+'</b>';
+          h+='<div style="margin-top:8px;padding:10px;background:var(--card);border-radius:6px;border-left:3px solid var(--accent)">'+
+            '<b style="font-size:14px">'+sg.title+'</b>';
           if(sg.data){
             if(sg.data.key) h+=' <span style="font-size:11px;color:#999">Key: <b>'+sg.data.key+'</b></span>';
-            if(sg.data.chords) h+='<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">🎸 Chords</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--bg);padding:6px;border-radius:4px">'+sg.data.chords+'</pre></details>';
-            if(sg.data.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">🔢 Number Chart</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--bg);padding:6px;border-radius:4px">'+sg.data.numberChart+'</pre></details>';
-            if(sg.data.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">📝 Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--bg);padding:6px;border-radius:4px">'+sg.data.lyrics+'</pre></details>';
+            if(sg.data.chords) h+='<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">🎸 Chords</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:160px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.chords+'</pre></details>';
+            if(sg.data.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">🔢 Number Chart</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:160px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.numberChart+'</pre></details>';
+            if(sg.data.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">📝 Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:160px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.lyrics+'</pre></details>';
           }
           h+='</div>';
         });
         h+='</div>';
       }
 
-      // PDF files section for members
-      var svcPdfs = s.pdfs||{};
-      var combinedPdf = s.combinedPdf||null;
-      var pdfKeys = Object.keys(svcPdfs);
-      if(pdfKeys.length || combinedPdf){
-        h+='<div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:6px">'+
-          '<b style="font-size:12px">📄 Service PDF Files</b>';
-
-        // Combined PDF first (most useful)
-        if(combinedPdf){
-          h+='<a href="'+combinedPdf+'" target="_blank" style="display:block;margin:8px 0 4px;padding:10px 14px;background:#28a745;color:#fff;border-radius:6px;text-decoration:none;text-align:center;font-size:13px;font-weight:bold">'+
-            '📦 View Combined PDF (All Files)</a>';
-        }
-
-        // Individual PDFs
-        if(pdfKeys.length){
-          h+='<div style="margin-top:6px">';
-          pdfKeys.forEach(function(pk){
-            var pdf=svcPdfs[pk];
-            h+='<a href="'+pdf.data+'" target="_blank" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--card);border:1px solid var(--line);border-radius:6px;margin:4px 0;text-decoration:none;color:var(--ink)">'+
-              '<span style="font-size:13px">📄 '+pdf.name+'</span>'+
-              '<span style="font-size:11px;color:#999">'+Math.round(pdf.size/1024)+' KB</span></a>';
-          });
-          h+='</div>';
-        }
+      // Team list
+      var teamByInst={};
+      for(var ins in s.slots){
+        var pids=Object.keys(s.slots[ins]||{});
+        if(pids.length) teamByInst[ins]=pids.map(function(pid){return users[pid]?users[pid].name:"?";});
+      }
+      var tkeys=Object.keys(teamByInst);
+      if(tkeys.length){
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">👥 Team</b>';
+        tkeys.forEach(function(ins){
+          h+='<div style="font-size:13px;margin-top:6px"><span style="color:#999;font-size:12px">'+ins+':</span> '+teamByInst[ins].join(", ")+'</div>';
+        });
         h+='</div>';
       }
 
-      h+='</div>';
+      h+='</div>'; // end card
     });
+
     if(!found){
-      h='<h2>Your Upcoming Services</h2><div class="card" style="text-align:center;color:#999;padding:30px">No upcoming services assigned</div>';
+      h='<h2>📅 Your Services</h2><div class="card" style="text-align:center;color:#999;padding:30px">No upcoming services assigned to you</div>';
     }
     render(h);
   });
@@ -1228,13 +1278,20 @@ function saveReminderSchedule(){
 function editSvcSongs(sid){
   setNav(adminTabs());
   render('<div class="card">Loading...</div>');
-  ref.child("services/"+sid).once("value").then(function(ss){
+  Promise.all([
+    ref.child("services/"+sid).once("value"),
+    ref.child("songs").once("value"),
+    ref.child("svcFiles/"+sid).once("value")
+  ]).then(function(res){
+    var ss=res[0]; var songSnap=res[1]; var filesSnap=res[2];
+    {
     var s=ss.val(); if(!s) return showHome();
-    ref.child("songs").once("value").then(function(songSnap){
+    {
       var allSongs = songSnap.val()||{};
       var assignedSongs = s.songs||{};
-      var svcPdfs = s.pdfs||{};
-      var combinedPdf = s.combinedPdf||null;
+      var fileData = filesSnap.val()||{};
+      var svcPdfs = fileData.pdfs||{};
+      var combinedPdf = fileData.combinedPdf||null;
 
       var h='<div class="card"><h2>🎵 Songs & Files — '+s.name+'</h2>'+
         '<small style="color:#999">'+s.date+' at '+s.time+'</small>';
@@ -1282,7 +1339,7 @@ function editSvcSongs(sid){
               '<span style="font-size:11px;color:#999;margin-left:8px">'+Math.round(pdf.size/1024)+' KB</span>'+
             '</div>'+
             '<div style="display:flex;gap:6px">'+
-              '<a href="'+pdf.data+'" target="_blank" style="font-size:11px;padding:4px 8px;background:var(--accent);color:#fff;border-radius:4px;text-decoration:none">View</a>'+
+              '<button onclick="viewPdf(\''+sid+'\',\''+pk+'\')" style="width:auto;padding:4px 8px;margin:0;font-size:11px;background:var(--accent);color:#fff;border-radius:4px;border:none;cursor:pointer">View</button>'+
               '<button onclick="removeSvcPdf(\''+sid+'\',\''+pk+'\')" style="width:auto;padding:4px 8px;margin:0;font-size:11px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:4px">✕ Remove</button>'+
             '</div></div>';
         });
@@ -1306,7 +1363,7 @@ function editSvcSongs(sid){
         '</div>';
 
       if(combinedPdf){
-        h+='<a href="'+combinedPdf+'" target="_blank" style="padding:6px 12px;background:#28a745;color:#fff;border-radius:6px;text-decoration:none;font-size:13px">📥 View Combined</a>';
+        h+='<button onclick="viewPdf(\''+sid+'\',\'combined\')" style="width:auto;padding:6px 14px;background:#28a745;color:#fff;border-radius:6px;border:none;cursor:pointer;font-size:13px;margin-left:8px">📥 View Combined</button>';
       }
 
       h+='</div>'+
@@ -1325,7 +1382,8 @@ function editSvcSongs(sid){
         '<button class="sec" onclick="showHome()">← Back</button></div></div>';
 
       render(h);
-    });
+    }
+    }
   });
 }
 
@@ -1337,124 +1395,193 @@ function removeSvcSong(sid,songId){
   ref.child("services/"+sid+"/songs/"+songId).remove().then(function(){editSvcSongs(sid);});
 }
 
-// ── Upload multiple PDFs to a service ──
+// ── Open a PDF stored in Firebase ──
+function viewPdf(sid, pdfId){
+  ref.child("svcPdfData/"+sid+"/"+pdfId).once("value").then(function(snap){
+    var dataUrl = snap.val();
+    if(!dataUrl){
+      alert("PDF not found. It may have been removed.");
+      return;
+    }
+    // Open in new tab
+    var w = window.open();
+    if(w){
+      w.document.write(
+        '<html><head><title>Service PDF</title></head><body style="margin:0">'+
+        '<embed src="'+dataUrl+'" type="application/pdf" width="100%" height="100%" '+
+        'style="position:fixed;top:0;left:0;width:100%;height:100%">'+
+        '</body></html>'
+      );
+    } else {
+      // Fallback: create a link and click it
+      var a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = "service-pdf.pdf";
+      a.click();
+    }
+  }).catch(function(e){
+    alert("Error loading PDF: "+e.message);
+  });
+}
+
+// ── Upload multiple PDFs ──
+// PDFs stored under: svcFiles/{sid}/pdfs/{id}  (metadata only — name, size, url)
+// Actual binary stored under: svcPdfData/{sid}/{id}  (large base64 kept separate)
 function uploadSvcPdfs(sid){
   var input = document.getElementById("svc-pdf-upload");
   var files = Array.from(input.files);
   if(!files.length) return;
   var status = document.getElementById("pdf-upload-status");
-  status.textContent = "Uploading "+files.length+" file(s)...";
+  status.innerHTML='<span style="color:#e65100">⏳ Uploading '+files.length+' file(s)... please wait</span>';
 
-  var promises = files.map(function(file){
-    return new Promise(function(resolve, reject){
-      // Check size — Firebase has 10MB node limit; warn if too big
-      if(file.size > 5 * 1024 * 1024){
-        status.textContent = "Warning: "+file.name+" is large (>5MB). Uploading may be slow.";
-      }
-      var reader = new FileReader();
-      reader.onload = function(e){
-        var id = "pdf_"+Math.random().toString(36).substr(2,9);
-        ref.child("services/"+sid+"/pdfs/"+id).set({
-          name: file.name,
-          size: file.size,
-          data: e.target.result,
-          uploadedAt: Date.now()
-        }, function(err){
-          if(err) reject(err);
-          else resolve(file.name);
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  var done=0;
+  var errors=[];
+
+  files.forEach(function(file){
+    if(file.size > 8*1024*1024){
+      errors.push(file.name+" too large (max 8MB)");
+      done++;
+      checkDone();
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var id = "pdf_"+Math.random().toString(36).substr(2,9);
+      var dataUrl = e.target.result;
+      // Store binary data in separate path to keep services node small
+      ref.child("svcPdfData/"+sid+"/"+id).set(dataUrl, function(err){
+        if(err){
+          errors.push(file.name+": "+err.message);
+        } else {
+          // Store only metadata in the svcFiles path
+          ref.child("svcFiles/"+sid+"/pdfs/"+id).set({
+            name: file.name,
+            size: file.size,
+            url:  "#pdf:"+sid+":"+id,  // internal reference
+            uploadedAt: Date.now()
+          });
+        }
+        done++;
+        checkDone();
+      });
+    };
+    reader.onerror = function(){
+      errors.push("Failed to read "+file.name);
+      done++;
+      checkDone();
+    };
+    reader.readAsDataURL(file);
   });
 
-  Promise.all(promises).then(function(names){
-    status.textContent = "✅ Uploaded: "+names.join(", ");
-    // Clear combined PDF since new files were added
-    ref.child("services/"+sid+"/combinedPdf").remove();
+  function checkDone(){
+    if(done < files.length) return;
+    if(errors.length){
+      status.innerHTML='<span style="color:#c62828">❌ Errors: '+errors.join(", ")+'</span>';
+    } else {
+      status.innerHTML='<span style="color:#28a745">✅ '+files.length+' file(s) uploaded</span>';
+    }
+    // Clear combined PDF since files changed
+    ref.child("svcFiles/"+sid+"/combinedPdf").remove();
+    ref.child("svcPdfData/"+sid+"/combined").remove();
     setTimeout(function(){ editSvcSongs(sid); }, 800);
-  }).catch(function(e){
-    status.textContent = "❌ Error: "+e.message;
-  });
+  }
 }
 
 function removeSvcPdf(sid, pdfId){
   if(!confirm("Remove this PDF?")) return;
-  ref.child("services/"+sid+"/pdfs/"+pdfId).remove().then(function(){
-    // Remove combined PDF too since files changed
-    ref.child("services/"+sid+"/combinedPdf").remove().then(function(){
-      editSvcSongs(sid);
-    });
-  });
+  Promise.all([
+    ref.child("svcFiles/"+sid+"/pdfs/"+pdfId).remove(),
+    ref.child("svcPdfData/"+sid+"/"+pdfId).remove(),
+    ref.child("svcFiles/"+sid+"/combinedPdf").remove(),
+    ref.child("svcPdfData/"+sid+"/combined").remove()
+  ]).then(function(){ editSvcSongs(sid); });
+}
+
+// ── Load PDF data from separate storage path ──
+async function loadPdfData(sid, pdfId){
+  var snap = await ref.child("svcPdfData/"+sid+"/"+pdfId).once("value");
+  return snap.val();
 }
 
 // ── Combine all service PDFs into one using pdf-lib ──
 async function combineSvcPdfs(sid){
   var statusEl = document.getElementById("combine-status");
-  statusEl.innerHTML = '<span style="color:#e65100">⏳ Loading PDFs...</span>';
+  statusEl.innerHTML='<span style="color:#e65100">⏳ Loading PDF files...</span>';
 
   try {
-    // Check pdf-lib is loaded
     if(typeof PDFLib === "undefined"){
-      statusEl.innerHTML = '<span style="color:#c62828">❌ PDF library not loaded. Check internet connection.</span>';
+      statusEl.innerHTML='<span style="color:#c62828">❌ PDF library not loaded. Check internet connection.</span>';
       return;
     }
 
-    var snap = await ref.child("services/"+sid+"/pdfs").once("value");
-    var pdfs = snap.val();
-    if(!pdfs || !Object.keys(pdfs).length){
-      statusEl.innerHTML = '<span style="color:#c62828">❌ No PDFs to combine</span>';
+    // Load metadata
+    var metaSnap = await ref.child("svcFiles/"+sid+"/pdfs").once("value");
+    var pdfMeta  = metaSnap.val();
+    if(!pdfMeta || !Object.keys(pdfMeta).length){
+      statusEl.innerHTML='<span style="color:#c62828">❌ No PDFs to combine. Upload files first.</span>';
       return;
     }
 
-    var pdfKeys = Object.keys(pdfs).sort(function(a,b){
-      return (pdfs[a].uploadedAt||0) - (pdfs[b].uploadedAt||0);
+    var pdfKeys = Object.keys(pdfMeta).sort(function(a,b){
+      return (pdfMeta[a].uploadedAt||0)-(pdfMeta[b].uploadedAt||0);
     });
 
-    statusEl.innerHTML = '<span style="color:#e65100">⏳ Merging '+pdfKeys.length+' PDFs...</span>';
-
+    statusEl.innerHTML='<span style="color:#e65100">⏳ Merging '+pdfKeys.length+' PDFs...</span>';
     var mergedPdf = await PDFLib.PDFDocument.create();
+    var totalPages=0;
 
     for(var i=0; i<pdfKeys.length; i++){
-      var pdf = pdfs[pdfKeys[i]];
-      statusEl.innerHTML = '<span style="color:#e65100">⏳ Processing '+pdf.name+' ('+(i+1)+'/'+pdfKeys.length+')...</span>';
+      var pk   = pdfKeys[i];
+      var meta = pdfMeta[pk];
+      statusEl.innerHTML='<span style="color:#e65100">⏳ Processing: '+meta.name+' ('+(i+1)+'/'+pdfKeys.length+')</span>';
 
-      // Convert base64 data URL to ArrayBuffer
-      var base64 = pdf.data.split(',')[1];
-      var binary = atob(base64);
-      var bytes = new Uint8Array(binary.length);
-      for(var j=0; j<binary.length; j++) bytes[j] = binary.charCodeAt(j);
+      // Load binary data from separate path
+      var dataUrl = await loadPdfData(sid, pk);
+      if(!dataUrl){ console.warn("No data for "+pk); continue; }
 
-      try {
-        var srcPdf = await PDFLib.PDFDocument.load(bytes.buffer);
-        var pages = await mergedPdf.copyPages(srcPdf, srcPdf.getPageIndices());
-        pages.forEach(function(page){ mergedPdf.addPage(page); });
-      } catch(pdfErr){
-        console.warn("Skipping "+pdf.name+": "+pdfErr.message);
-        statusEl.innerHTML = '<span style="color:#e65100">⏳ Skipping corrupted file: '+pdf.name+'</span>';
+      var base64 = dataUrl.split(',')[1];
+      var binary  = atob(base64);
+      var bytes   = new Uint8Array(binary.length);
+      for(var j=0; j<binary.length; j++) bytes[j]=binary.charCodeAt(j);
+
+      try{
+        var srcDoc = await PDFLib.PDFDocument.load(bytes.buffer);
+        var pages  = await mergedPdf.copyPages(srcDoc, srcDoc.getPageIndices());
+        pages.forEach(function(p){ mergedPdf.addPage(p); totalPages++; });
+      }catch(e2){
+        console.warn("Skipping "+meta.name+": "+e2.message);
       }
     }
 
-    statusEl.innerHTML = '<span style="color:#e65100">⏳ Saving combined PDF...</span>';
+    if(totalPages===0){
+      statusEl.innerHTML='<span style="color:#c62828">❌ Could not read any PDF pages. Check files are valid PDFs.</span>';
+      return;
+    }
 
-    var mergedBytes = await mergedPdf.save();
-    // Convert back to base64 data URL
-    var mergedArray = new Uint8Array(mergedBytes);
-    var mergedBinary = '';
-    for(var k=0; k<mergedArray.length; k++) mergedBinary += String.fromCharCode(mergedArray[k]);
-    var mergedBase64 = 'data:application/pdf;base64,' + btoa(mergedBinary);
+    statusEl.innerHTML='<span style="color:#e65100">⏳ Saving combined PDF ('+totalPages+' pages)...</span>';
+    var mergedBytes  = await mergedPdf.save();
+    var mergedArr    = new Uint8Array(mergedBytes);
+    var mergedBin    = '';
+    for(var k2=0; k2<mergedArr.length; k2++) mergedBin+=String.fromCharCode(mergedArr[k2]);
+    var mergedB64    = 'data:application/pdf;base64,'+btoa(mergedBin);
 
-    // Save to Firebase
-    await ref.child("services/"+sid+"/combinedPdf").set(mergedBase64);
-    statusEl.innerHTML = '<span style="color:#28a745">✅ Combined PDF ready! Team members can now view it.</span>';
+    // Store combined binary data separately
+    await ref.child("svcPdfData/"+sid+"/combined").set(mergedB64);
+    // Store metadata in svcFiles
+    await ref.child("svcFiles/"+sid+"/combinedPdf").set({
+      name:  "Combined-"+sid+".pdf",
+      size:  mergedArr.length,
+      pages: totalPages,
+      url:   "#pdf:"+sid+":combined",
+      createdAt: Date.now()
+    });
 
-    // Refresh after short delay to show the View Combined button
+    statusEl.innerHTML='<span style="color:#28a745">✅ Combined PDF ready ('+totalPages+' pages)! Team members can now view it.</span>';
     setTimeout(function(){ editSvcSongs(sid); }, 1200);
 
-  } catch(e) {
+  }catch(e){
     console.error("Combine error:", e);
-    statusEl.innerHTML = '<span style="color:#c62828">❌ Error: '+e.message+'</span>';
+    statusEl.innerHTML='<span style="color:#c62828">❌ Error: '+e.message+'</span>';
   }
 }
 
