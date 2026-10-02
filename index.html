@@ -89,10 +89,10 @@ var FB = {
     db  = firebase.database();
     ref = db.ref("worship");
     fbReady = true;
-    document.getElementById("synctxt").textContent = "ok Connected";
+    document.getElementById("synctxt").textContent = "✓ Connected";
 
     db.ref(".info/connected").on("value", function(s){
-      document.getElementById("synctxt").textContent = s.val() ? "ok Connected" : "✗ Offline";
+      document.getElementById("synctxt").textContent = s.val() ? "✓ Connected" : "✗ Offline";
     });
 
     // Load custom instruments from Firebase (if admin has customized)
@@ -164,7 +164,7 @@ function start(){
   else showHome();
 }
 
-function adminTabs(){return[["home","Home"],["manage","👥 Users"],["songs","Songs"],["chat","Chat"],["team","Team"],["settings","⚙️"],["log","📋 Log"],["profile","👤"],["logout","Logout"]]}
+function adminTabs(){return[["home","Home"],["manage","👥 Users"],["songs","Songs"],["chat","Chat"],["settings","⚙️"],["log","📋 Log"],["profile","👤"],["logout","Logout"]]}
 function memberTabs(){return[["home","Home"],["my","Services"],["songs","Songs"],["avail","Off"],["chat","Chat"],["profile","👤"],["logout","Logout"]]}
 
 function logout(){
@@ -209,7 +209,7 @@ function showLogin(){
     var html='<h2>🎵 Worship Scheduler</h2>';
     
     if(!hasAdmin){
-      html+='<div class="msg-ok"><b> Setup: Create Your Admin Account</b><br>You are the first user - you will be Admin.</div>'+
+      html+='<div class="msg-ok"><b>👑 Setup: Create Your Admin Account</b><br>You are the first user - you will be Admin.</div>'+
         '<input id="nm" placeholder="Full Name"><input id="em" type="email" placeholder="Email">'+
         '<input id="ph" type="tel" placeholder="Phone"><input id="pw" type="password" placeholder="Password (4+ chars)">'+
         '<button onclick="doSignup(true)" style="background:#28a745">Create Admin Account</button>'+
@@ -262,11 +262,11 @@ function doSignup(isFirst){
     if(err){msg.innerHTML='<div class="msg-err">x '+err.message+'</div>';}
     else{
       if(isFirst){
-        msg.innerHTML='<div class="msg-ok">ok Admin account created! Sign in below.</div>';
-        alert("ok Admin Account Created!\n\nNow sign in below with your name and password.");
+        msg.innerHTML='<div class="msg-ok">✅ Admin account created! Sign in below.</div>';
+        alert("✅ Admin Account Created!\n\nNow sign in below with your name and password.");
       }else{
-        msg.innerHTML='<div class="msg-ok">ok Account created! Sign in below.</div>';
-        alert("ok Account created!\n\nSign in below.");
+        msg.innerHTML='<div class="msg-ok">✅ Account created! Sign in below.</div>';
+        alert("✅ Account created!\n\nSign in below.");
       }
     }
   });
@@ -310,7 +310,7 @@ function doReset(){
   ref.child("users").remove(function(err){
     var msg=document.getElementById("rmsg");
     if(err){msg.innerHTML='<div class="msg-err">x '+err.message+'</div>';}
-    else{msg.innerHTML='<div class="msg-ok">ok Cleared! Now create admin above.</div>';showLogin();}
+    else{msg.innerHTML='<div class="msg-ok">✅ Cleared! Now create admin above.</div>';showLogin();}
   });
 }
 
@@ -448,11 +448,11 @@ function showManage(){
     }
     
     if(approved.length){
-      h+='<h3>ok Approved Members ('+approved.length+')</h3>';
+      h+='<h3>✓ Approved Members ('+approved.length+')</h3>';
       approved.forEach(function(u){
         var isCoA=u.role==="co-admin";
         h+='<div class="card approved"><b>'+
-          (u.role==="admin"?"":isCoA?"*":"")+' '+u.name+'</b>'+
+          (u.role==="admin"?"👑":isCoA?"⭐":"👤")+' '+u.name+'</b>'+
           '<div style="font-size:12px;color:#666;margin:4px 0">'+
           (u.inst&&u.inst.length?u.inst.join(", "):"No instruments")+'</div>';
         if(u.role!=="admin"){
@@ -470,7 +470,7 @@ function showManage(){
 function approveUser(id,name){
   logActivity("user_approved","Approved: "+name);
   ref.child("users/"+id).update({status:"approved"}).then(function(){
-    alert("ok "+name+" approved!");
+    alert("✅ "+name+" approved!");
     showManage();
   });
 }
@@ -484,7 +484,7 @@ function rejectUser(id,name){
 function promote(id,name){
   logActivity("promoted_coadmin",name+" -> Co-Admin");
   ref.child("users/"+id).update({role:"co-admin"}).then(function(){
-    alert("* "+name+" is now Co-Admin!");
+    alert("⭐ "+name+" is now Co-Admin!");
     showManage();
   });
 }
@@ -832,7 +832,7 @@ function sendAssignmentEmail(sid, ins, memberId){
       deny_url:   denyUrl,
       admin_email:adminEmail
     }).then(function(){
-      console.log("ok Assignment email sent to "+member.name);
+      console.log("✅ Assignment email sent to "+member.name);
     }).catch(function(e){
       console.error("Email error:",e);
     });
@@ -866,7 +866,7 @@ function checkRsvpFromUrl(){
     ref.child("services/"+sid+"/rsvp/"+muid).set(status).then(function(){
       // Show confirmation in app
       var msg = status==="accepted"
-        ? "ok You've ACCEPTED the service!\n\n"+svc.name+"\n"+svc.date+" at "+svc.time
+        ? "✅ You've ACCEPTED the service!\n\n"+svc.name+"\n"+svc.date+" at "+svc.time
         : "x You've DECLINED the service.\n\n"+svc.name+"\n"+svc.date+" at "+svc.time+"\n\nAdmin has been notified.";
       alert(msg);
 
@@ -1029,7 +1029,7 @@ function showSettings(){
       '</div>'+
 
       '<div style="background:#e8f5e9;padding:10px;border-radius:6px;margin:8px 0;font-size:13px">'+
-      'ok <b>Reminder emails reuse the Member Notification template</b> - no extra template needed! '+
+      '✅ <b>Reminder emails reuse the Member Notification template</b> - no extra template needed! '+
       'A <code>{{is_reminder}}</code> variable is passed so your template can show "REMINDER:" in the subject.'+
       '</div>'+
 
@@ -1052,7 +1052,7 @@ function showSettings(){
       '⏰ Time: {{svc_time}}\n\n'+
       '👥 Full Team:\n{{team_list}}\n\n'+
       'Please respond:\n'+
-      'ok ACCEPT: {{accept_url}}\n'+
+      '✅ ACCEPT: {{accept_url}}\n'+
       'x DECLINE: {{deny_url}}\n\n'+
       'God bless,\nWorship Team Admin'+
       '</pre></details>'+
@@ -1060,7 +1060,7 @@ function showSettings(){
       '<pre style="font-size:11px;white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:4px;margin-top:8px">'+
       'Subject: RSVP Update: {{member_name}} {{rsvp_status}}\n\n'+
       '{{member_name}} has {{rsvp_status}} for {{svc_name}} on {{svc_date}}.\n\n'+
-      'ok Accepted:\n{{accepted_list}}\n\n'+
+      '✅ Accepted:\n{{accepted_list}}\n\n'+
       'x Declined:\n{{denied_list}}\n\n'+
       '... Pending:\n{{pending_list}}'+
       '</pre></details>'+
@@ -1128,7 +1128,7 @@ function saveInstruments(){
   msg.innerHTML='<div class="msg-info">... Saving...</div>';
   ref.child("settings/instruments").set(list).then(function(){
     INST=list; // update live in this session
-    msg.innerHTML='<div class="msg-ok">ok Saved! Members will see updated list on next login.</div>';
+    msg.innerHTML='<div class="msg-ok">✅ Saved! Members will see updated list on next login.</div>';
   }).catch(function(e){
     msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
   });
@@ -1154,7 +1154,7 @@ function saveEmailSettings(){
     appUrl:url
   }).then(function(){
     initEmailJS(pub);
-    msg.innerHTML='<div class="msg-ok">ok Email settings saved!</div>';
+    msg.innerHTML='<div class="msg-ok">✅ Email settings saved!</div>';
   }).catch(function(e){
     msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
   });
@@ -1189,7 +1189,7 @@ function saveReminderSchedule(){
     var dayLabels = days.map(function(d){return d.charAt(0).toUpperCase()+d.slice(1);}).join(", ");
     var h12  = hour>12?hour-12:(hour||12);
     var ampm = hour>=12?"PM":"AM";
-    msg.innerHTML='<div class="msg-ok">ok Reminders set for <b>'+dayLabels+'</b> at <b>'+h12+':00 '+ampm+' PST</b></div>';
+    msg.innerHTML='<div class="msg-ok">✅ Reminders set for <b>'+dayLabels+'</b> at <b>'+h12+':00 '+ampm+' PST</b></div>';
   }).catch(function(e){
     msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
   });
@@ -1345,7 +1345,7 @@ function loadChordFile(input){
       var txt = e.target.result;
       document.getElementById("schords").value = txt;
       transposePreview();
-      preview.textContent = "ok Loaded: "+file.name;
+      preview.textContent = "✅ Loaded: "+file.name;
       window._chordFileData = txt;
       window._chordFileType = "text/plain";
     };
@@ -1357,8 +1357,8 @@ function loadChordFile(input){
       window._chordFileData = e.target.result;
       window._chordFileType = file.type;
       preview.innerHTML = file.type.startsWith("image/")
-        ? 'ok '+file.name+' - <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
-        : 'ok '+file.name+' (PDF - will be stored with song)';
+        ? '✅ '+file.name+' - <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
+        : '✅ '+file.name+' (PDF - will be stored with song)';
     };
     reader.readAsDataURL(file);
   }
@@ -1375,7 +1375,7 @@ function loadLyricFile(input){
     reader.onload = function(e){
       var txt = e.target.result;
       document.getElementById("sly").value = txt;
-      preview.textContent = "ok Loaded: "+file.name;
+      preview.textContent = "✅ Loaded: "+file.name;
       window._lyricFileData = txt;
       window._lyricFileType = "text/plain";
     };
@@ -1386,8 +1386,8 @@ function loadLyricFile(input){
       window._lyricFileData = e.target.result;
       window._lyricFileType = file.type;
       preview.innerHTML = file.type.startsWith("image/")
-        ? 'ok '+file.name+' - <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
-        : 'ok '+file.name+' (PDF)';
+        ? '✅ '+file.name+' - <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
+        : '✅ '+file.name+' (PDF)';
     };
     reader.readAsDataURL(file);
   }
@@ -1563,7 +1563,7 @@ function applyTranspose(songId, fromKey){
     chords:      newChords||"",
     numberChart: newNC||""
   }).then(function(){
-    alert("ok Transposed to "+newKey+" and saved!");
+    alert("✅ Transposed to "+newKey+" and saved!");
     showSongs();
   });
 }
@@ -1655,7 +1655,7 @@ function showMy(){
       // RSVP status
       var rsvpStatus = (s.rsvp&&s.rsvp[me]) ? s.rsvp[me] : "pending";
       var rsvpColor  = rsvpStatus==="accepted"?"#2e7d32":rsvpStatus==="denied"?"#c62828":"#e65100";
-      var rsvpLabel  = rsvpStatus==="accepted"?"ok Accepted":rsvpStatus==="denied"?"x Declined":"... Pending Response";
+      var rsvpLabel  = rsvpStatus==="accepted"?"✅ Accepted":rsvpStatus==="denied"?"❌ Declined":"⏳ Pending Response";
 
       // Team list
       var teamByInst={};
@@ -1883,7 +1883,7 @@ function showTeam(){
       var u=users[k];
       if(u.status==="approved"){
         found=true;
-        var icon=u.role==="admin"?"":u.role==="co-admin"?"*":"";
+        var icon=u.role==="admin"?"👑":u.role==="co-admin"?"*":"";
         h+='<div class="card"><b>'+icon+' '+u.name+'</b><br>'+
           '<small style="color:#999">'+(u.inst&&u.inst.length?u.inst.join(", "):"-")+'</small></div>';
       }
@@ -1909,7 +1909,7 @@ function showProfile(){
     var inst = res[1].val()&&Array.isArray(res[1].val()) ? res[1].val() : INST;
     var sel  = u.inst||[];
 
-    var roleIcon = u.role==="admin"?"":u.role==="co-admin"?"*":"";
+    var roleIcon = u.role==="admin"?"👑":u.role==="co-admin"?"*":"";
 
     var h='<h2>'+roleIcon+' My Profile</h2>';
 
@@ -1977,7 +1977,7 @@ function saveProfileInst(){
   msg.innerHTML='<div class="msg-info">... Saving...</div>';
   ref.child("users/"+uid()+"/inst").set(sel).then(function(){
     sessionStorage.setItem("inst", sel.join("|"));
-    msg.innerHTML='<div class="msg-ok">ok Instruments saved!</div>';
+    msg.innerHTML='<div class="msg-ok">✅ Instruments saved!</div>';
   }).catch(function(e){
     msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
   });
@@ -2017,7 +2017,7 @@ function saveProfile(){
       logActivity("profile_updated","Updated profile");
       sessionStorage.setItem("name", name);
       setHeader();
-      msg.innerHTML='<div class="msg-ok">ok Profile updated successfully!</div>';
+      msg.innerHTML='<div class="msg-ok">✅ Profile updated successfully!</div>';
     }).catch(function(e){
       msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
     });
@@ -2055,7 +2055,7 @@ function showLog(){
 
     var ACTION_ICONS={
       login:"🔑", logout:"🚪",
-      user_approved:"ok", user_rejected:"x",
+      user_approved:"✅", user_rejected:"❌",
       promoted_coadmin:"*", demoted_coadmin:"⬇",
       service_created:"📅", service_deleted:"🗑",
       member_assigned:"👥", member_removed:"✂️",
