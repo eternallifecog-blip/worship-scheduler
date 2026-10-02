@@ -44,8 +44,8 @@ nav button{margin:0;padding:8px 12px;width:auto;font-size:13px}
 <nav id="mainnav"></nav>
 <main id="main"></main>
 
-<script async defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script async defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>
 var db, ref;
@@ -82,36 +82,33 @@ var FB = {
   if(badge) badge.innerHTML='<span style="background:#28a745;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold">🟢 PRODUCTION</span>';
 })();
 
-var tries=0, timer=setInterval(function(){
-  tries++;
-  if(typeof firebase!=="undefined"&&firebase.initializeApp){
-    clearInterval(timer);
-    try{
-      if(!firebase.apps.length) firebase.initializeApp(FB);
-      db=firebase.database();
-      ref=db.ref("worship");
-      fbReady=true;
-      document.getElementById("synctxt").textContent="✓ Connected";
-      db.ref(".info/connected").on("value",function(s){
-        document.getElementById("synctxt").textContent=s.val()?"✓ Connected":"✗ Offline";
-      });
-      // Load custom instruments from Firebase (if set by admin)
-      ref.child("settings/instruments").once("value").then(function(snap){
-        if(snap.val()&&Array.isArray(snap.val())&&snap.val().length>0){
-          INST=snap.val();
-        }
-        start();
-      }).catch(function(){ start(); });
-    }catch(e){
-      document.getElementById("synctxt").textContent="✗ "+e.message;
+// Initialize Firebase immediately (scripts loaded synchronously above)
+(function(){
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(FB);
+    db  = firebase.database();
+    ref = db.ref("worship");
+    fbReady = true;
+    document.getElementById("synctxt").textContent = "✓ Connected";
+
+    db.ref(".info/connected").on("value", function(s){
+      document.getElementById("synctxt").textContent = s.val() ? "✓ Connected" : "✗ Offline";
+    });
+
+    // Load custom instruments from Firebase (if admin has customized)
+    ref.child("settings/instruments").once("value").then(function(snap){
+      if(snap.val() && Array.isArray(snap.val()) && snap.val().length > 0){
+        INST = snap.val();
+      }
       start();
-    }
-  }else if(tries>40){
-    clearInterval(timer);
-    document.getElementById("synctxt").textContent="✗ Firebase failed";
+    }).catch(function(){ start(); });
+
+  }catch(e){
+    document.getElementById("synctxt").textContent = "✗ Error: " + e.message;
+    console.error("Firebase init error:", e);
     start();
   }
-},500);
+})();
 
 function uid(){return sessionStorage.getItem("uid")}
 function uname(){return sessionStorage.getItem("name")}
