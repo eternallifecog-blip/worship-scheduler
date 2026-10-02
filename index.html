@@ -61,18 +61,12 @@ var KEYS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 var EJS = { ready: false };
 function initEmailJS(pubKey){ if(pubKey){ emailjs.init(pubKey); EJS.ready=true; } }
 
-// ── Environment detection ──
-// Production: served from /worship-scheduler/ (main branch GitHub Pages)
-// Sandbox:    served from /worship-scheduler-dev/ (dev branch GitHub Pages)
-//             OR localhost / any other URL
-var IS_PROD = window.location.pathname.indexOf("/worship-scheduler/") === 0
-              && window.location.hostname !== "localhost"
-              && window.location.hostname !== "127.0.0.1";
-var ENV = IS_PROD ? "production" : "sandbox";
+// ── Firebase config (Production) ──
+// Sandbox/prod split is set up later — currently always uses production
+var IS_PROD = true;
+var ENV = "production";
 
-// ── Firebase configs ──
-var FB_PROD = {
-  // *** PRODUCTION — your live church database ***
+var FB = {
   apiKey:"AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
   authDomain:"elc-worship-schedule.firebaseapp.com",
   databaseURL:"https://elc-worship-schedule-default-rtdb.firebaseio.com",
@@ -82,53 +76,10 @@ var FB_PROD = {
   appId:"1:868888139963:web:2d933464a111b2b17c319e"
 };
 
-var FB_SANDBOX = {
-  // *** SANDBOX — paste your dev Firebase config here after creating it ***
-  // See setup guide: create a second Firebase project named elc-worship-dev
-  apiKey:"PASTE_SANDBOX_API_KEY_HERE",
-  authDomain:"PASTE_SANDBOX_AUTH_DOMAIN_HERE",
-  databaseURL:"PASTE_SANDBOX_DATABASE_URL_HERE",
-  projectId:"PASTE_SANDBOX_PROJECT_ID_HERE",
-  storageBucket:"PASTE_SANDBOX_STORAGE_BUCKET_HERE",
-  messagingSenderId:"PASTE_SANDBOX_SENDER_ID_HERE",
-  appId:"PASTE_SANDBOX_APP_ID_HERE"
-};
-
-var FB = IS_PROD ? FB_PROD : FB_SANDBOX;
-
-// Set environment badge immediately
+// Environment badge
 (function(){
   var badge = document.getElementById("env-badge");
-  if(badge){
-    if(IS_PROD){
-      badge.innerHTML='<span style="background:#28a745;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold">🟢 PRODUCTION</span>';
-    } else {
-      badge.innerHTML='<span style="background:#ff9800;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold">🟡 SANDBOX</span>';
-    }
-  }
-
-  // Warn if sandbox Firebase config is not yet set up
-  if(!IS_PROD && FB_SANDBOX.apiKey === "PASTE_SANDBOX_API_KEY_HERE"){
-    setTimeout(function(){
-      var main = document.getElementById("main");
-      if(main){
-        main.innerHTML='<div class="card" style="border:2px solid #ff9800">'+
-          '<h2 style="color:#e65100;margin-top:0">⚙️ Sandbox Setup Required</h2>'+
-          '<p>You\'re running in <b>Sandbox mode</b> but haven\'t configured the sandbox Firebase database yet.</p>'+
-          '<p style="color:#999;font-size:13px">Follow the setup guide below to create a free second Firebase project for testing.</p>'+
-          '<ol style="font-size:13px;line-height:2">'+
-          '<li>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a></li>'+
-          '<li>Click <b>Add project</b> → name it <b>elc-worship-dev</b></li>'+
-          '<li>Enable <b>Realtime Database</b> in test mode</li>'+
-          '<li>Go to Project Settings → Your apps → copy the config</li>'+
-          '<li>Open <b>index.html</b> → find <b>FB_SANDBOX</b> → paste your config</li>'+
-          '<li>Push to the <b>dev</b> branch → sandbox will work</li>'+
-          '</ol>'+
-          '<p style="font-size:13px;color:#999">Until then, sandbox will not connect to Firebase.</p>'+
-          '</div>';
-      }
-    }, 1500);
-  }
+  if(badge) badge.innerHTML='<span style="background:#28a745;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold">🟢 PRODUCTION</span>';
 })();
 
 var tries=0, timer=setInterval(function(){
