@@ -34,7 +34,10 @@ nav button{margin:0;padding:8px 12px;width:auto;font-size:13px}
 </head>
 <body>
 <header>
-  <h1>🎵 Worship Scheduler</h1>
+  <div style="display:flex;align-items:center;gap:10px">
+    <h1 style="margin:0">🎵 Worship Scheduler</h1>
+    <span id="env-badge"></span>
+  </div>
   <div id="uinfo" style="font-size:12px;color:#999;margin-top:4px"></div>
   <div class="status" id="synctxt">⏳ Starting...</div>
 </header>
@@ -58,7 +61,18 @@ var KEYS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 var EJS = { ready: false };
 function initEmailJS(pubKey){ if(pubKey){ emailjs.init(pubKey); EJS.ready=true; } }
 
-var FB = {
+// ── Environment detection ──
+// Production: served from /worship-scheduler/ (main branch GitHub Pages)
+// Sandbox:    served from /worship-scheduler-dev/ (dev branch GitHub Pages)
+//             OR localhost / any other URL
+var IS_PROD = window.location.pathname.indexOf("/worship-scheduler/") === 0
+              && window.location.hostname !== "localhost"
+              && window.location.hostname !== "127.0.0.1";
+var ENV = IS_PROD ? "production" : "sandbox";
+
+// ── Firebase configs ──
+var FB_PROD = {
+  // *** PRODUCTION — your live church database ***
   apiKey:"AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
   authDomain:"elc-worship-schedule.firebaseapp.com",
   databaseURL:"https://elc-worship-schedule-default-rtdb.firebaseio.com",
@@ -67,6 +81,55 @@ var FB = {
   messagingSenderId:"868888139963",
   appId:"1:868888139963:web:2d933464a111b2b17c319e"
 };
+
+var FB_SANDBOX = {
+  // *** SANDBOX — paste your dev Firebase config here after creating it ***
+  // See setup guide: create a second Firebase project named elc-worship-dev
+  apiKey:"PASTE_SANDBOX_API_KEY_HERE",
+  authDomain:"PASTE_SANDBOX_AUTH_DOMAIN_HERE",
+  databaseURL:"PASTE_SANDBOX_DATABASE_URL_HERE",
+  projectId:"PASTE_SANDBOX_PROJECT_ID_HERE",
+  storageBucket:"PASTE_SANDBOX_STORAGE_BUCKET_HERE",
+  messagingSenderId:"PASTE_SANDBOX_SENDER_ID_HERE",
+  appId:"PASTE_SANDBOX_APP_ID_HERE"
+};
+
+var FB = IS_PROD ? FB_PROD : FB_SANDBOX;
+
+// Set environment badge immediately
+(function(){
+  var badge = document.getElementById("env-badge");
+  if(badge){
+    if(IS_PROD){
+      badge.innerHTML='<span style="background:#28a745;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold">🟢 PRODUCTION</span>';
+    } else {
+      badge.innerHTML='<span style="background:#ff9800;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold">🟡 SANDBOX</span>';
+    }
+  }
+
+  // Warn if sandbox Firebase config is not yet set up
+  if(!IS_PROD && FB_SANDBOX.apiKey === "PASTE_SANDBOX_API_KEY_HERE"){
+    setTimeout(function(){
+      var main = document.getElementById("main");
+      if(main){
+        main.innerHTML='<div class="card" style="border:2px solid #ff9800">'+
+          '<h2 style="color:#e65100;margin-top:0">⚙️ Sandbox Setup Required</h2>'+
+          '<p>You\'re running in <b>Sandbox mode</b> but haven\'t configured the sandbox Firebase database yet.</p>'+
+          '<p style="color:#999;font-size:13px">Follow the setup guide below to create a free second Firebase project for testing.</p>'+
+          '<ol style="font-size:13px;line-height:2">'+
+          '<li>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a></li>'+
+          '<li>Click <b>Add project</b> → name it <b>elc-worship-dev</b></li>'+
+          '<li>Enable <b>Realtime Database</b> in test mode</li>'+
+          '<li>Go to Project Settings → Your apps → copy the config</li>'+
+          '<li>Open <b>index.html</b> → find <b>FB_SANDBOX</b> → paste your config</li>'+
+          '<li>Push to the <b>dev</b> branch → sandbox will work</li>'+
+          '</ol>'+
+          '<p style="font-size:13px;color:#999">Until then, sandbox will not connect to Firebase.</p>'+
+          '</div>';
+      }
+    }, 1500);
+  }
+})();
 
 var tries=0, timer=setInterval(function(){
   tries++;
@@ -144,13 +207,35 @@ function start(){
   else if(tab==="team") showTeam();
   else if(tab==="settings") showSettings();
   else if(tab==="profile") showProfile();
+  else if(tab==="log") showLog();
   else showHome();
 }
 
-function adminTabs(){return[["home","Home"],["manage","👥 Users"],["plan","Plan"],["songs","Songs"],["chat","Chat"],["team","Team"],["settings","⚙️"],["profile","👤"],["logout","Logout"]]}
+function adminTabs(){return[["home","Home"],["manage","👥 Users"],["plan","Plan"],["songs","Songs"],["chat","Chat"],["team","Team"],["settings","⚙️"],["log","📋 Log"],["profile","👤"],["logout","Logout"]]}
 function memberTabs(){return[["home","Home"],["my","Services"],["songs","Songs"],["avail","Off"],["chat","Chat"],["profile","👤"],["logout","Logout"]]}
 
-function logout(){sessionStorage.clear();tab="home";start();}
+function logout(){
+  logActivity("logout","Signed out");
+  sessionStorage.clear();tab="home";start();
+}
+
+/* ── Activity Logger ── */
+function logActivity(action, detail){
+  if(!fbReady) return;
+  var me = sessionStorage.getItem("name")||"Unknown";
+  var role = sessionStorage.getItem("role")||"";
+  var entry = {
+    action:    action,
+    detail:    detail||"",
+    user:      me,
+    role:      role,
+    env:       ENV,
+    timestamp: new Date().toISOString(),
+    ts:        Date.now()
+  };
+  // Push with auto-id; keep last 500 entries (pruned in showLog)
+  ref.child("activityLog").push(entry).catch(function(){});
+}
 
 /* ===== LOGIN ===== */
 function showLogin(){
@@ -263,6 +348,7 @@ function doSignin(){
     sessionStorage.setItem("inst",fu.inst&&fu.inst.length?fu.inst.join("|"):"");
     tab="home";
     start();
+    logActivity("login","Signed in as "+fu.role);
   });
 }
 
@@ -362,25 +448,29 @@ function showManage(){
   });
 }
 function approveUser(id,name){
-  ref.child("users/"+id).update({status:"approved"}).then(function(){
+  logActivity("user_approved","Approved: "+name);
+  ref.child("users/"+id).update({status:"approved"})).then(function(){
     alert("✅ "+name+" approved!");
     showManage();
   });
 }
 function rejectUser(id,name){
   if(!confirm("Reject "+name+"?")) return;
-  ref.child("users/"+id).update({status:"rejected"}).then(function(){
+  logActivity("user_rejected","Rejected: "+name);
+  ref.child("users/"+id).update({status:"rejected"})).then(function(){
     showManage();
   });
 }
 function promote(id,name){
-  ref.child("users/"+id).update({role:"co-admin"}).then(function(){
+  logActivity("promoted_coadmin",name+" → Co-Admin");
+  ref.child("users/"+id).update({role:"co-admin"})).then(function(){
     alert("⭐ "+name+" is now Co-Admin!");
     showManage();
   });
 }
 function demote(id,name){
-  ref.child("users/"+id).update({role:"member"}).then(function(){
+  logActivity("demoted_coadmin",name+" → Member");
+  ref.child("users/"+id).update({role:"member"})).then(function(){
     alert(name+" is now Member");
     showManage();
   });
@@ -430,6 +520,7 @@ function deleteSvc(id, name, date){
     return;
   }
   ref.child("services/"+id).remove().then(function(){
+    logActivity("service_deleted","Deleted: "+name+" on "+date);
     showPlan();
   }).catch(function(e){
     alert("Error deleting: "+e.message);
@@ -463,6 +554,7 @@ function addSvc(){
     
     // No duplicate — save
     var id = "s_" + Math.random().toString(36).substr(2,9);
+    logActivity("service_created","Created: "+nm+" on "+d);
     ref.child("services/"+id).set({
       name: nm,
       date: d,
@@ -659,12 +751,14 @@ function addAssign(sid,ins,memberId){
     ref.child("services/"+sid+"/slots/"+ins+"/"+memberId).set(true),
     ref.child("services/"+sid+"/rsvp/"+memberId).set("pending")
   ]).then(function(){
+    logActivity("member_assigned","Assigned to service ("+ins+")");
     // Send email notification to the member
     sendAssignmentEmail(sid, ins, memberId);
     setTimeout(function(){editSvc(sid);},400);
   });
 }
 function delAssign(sid,ins,memberId){
+  logActivity("member_removed","Removed "+ins+" from service "+sid);
   ref.child("services/"+sid+"/slots/"+ins+"/"+memberId).remove();
   ref.child("services/"+sid+"/rsvp/"+memberId).remove().then(function(){editSvc(sid);});
 }
@@ -1480,6 +1574,8 @@ function addSong(){
     data.lyricFileType = window._lyricFileType;
   }
 
+  var _stitle=(document.getElementById("st").value||"").trim();
+  logActivity("song_added","Added song: "+_stitle);
   ref.child("songs/sg_"+Math.random().toString(36).substr(2,9)).set(data).then(function(){
     // Reset file state
     window._chordFileData = null;
@@ -1494,12 +1590,10 @@ function addSong(){
 
 function delSong(id){
   if(!confirm("Delete this song?")) return;
+  logActivity("song_deleted","Deleted song: "+id);
   ref.child("songs/"+id).remove().then(showSongs);
 }
 
-function escHtml(s){
-  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
 function escJs(s){
   return (s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");
 }
@@ -1625,6 +1719,7 @@ function showMy(){
 
 function rsvpService(sid, status){
   var me=uid();
+  logActivity("rsvp_response","RSVP "+status+" for service "+sid);
   ref.child("services/"+sid+"/rsvp/"+me).set(status).then(function(){
     // Send RSVP notification to admin
     Promise.all([
@@ -1899,6 +1994,7 @@ function saveProfile(){
     var updates = { name:name, email:email, phone:phone };
     if(newpw) updates.pass = newpw;
     ref.child("users/"+uid()).update(updates).then(function(){
+      logActivity("profile_updated","Updated profile");
       sessionStorage.setItem("name", name);
       setHeader();
       msg.innerHTML='<div class="msg-ok">✅ Profile updated successfully!</div>';
@@ -1919,6 +2015,130 @@ function deleteOwnAccount(){
       logout();
     });
   });
+}
+
+
+
+/* ===== ACTIVITY LOG (Admin) ===== */
+function showLog(){
+  setNav(adminTabs());
+  render('<h2>📋 Activity Log</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+
+  ref.child("activityLog").orderByChild("ts").limitToLast(200).once("value").then(function(snap){
+    var entries=[];
+    if(snap.val()){
+      for(var k in snap.val()) entries.push({id:k,...snap.val()[k]});
+    }
+    // Sort newest first
+    entries.sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+
+    var ACTION_ICONS={
+      login:"🔑", logout:"🚪",
+      user_approved:"✅", user_rejected:"❌",
+      promoted_coadmin:"⭐", demoted_coadmin:"⬇",
+      service_created:"📅", service_deleted:"🗑",
+      member_assigned:"👥", member_removed:"✂️",
+      rsvp_response:"📬",
+      song_added:"🎵", song_deleted:"🗑",
+      profile_updated:"👤"
+    };
+
+    var ACTION_LABELS={
+      login:"Sign In", logout:"Sign Out",
+      user_approved:"User Approved", user_rejected:"User Rejected",
+      promoted_coadmin:"Made Co-Admin", demoted_coadmin:"Removed Co-Admin",
+      service_created:"Service Created", service_deleted:"Service Deleted",
+      member_assigned:"Member Assigned", member_removed:"Member Removed",
+      rsvp_response:"RSVP Response",
+      song_added:"Song Added", song_deleted:"Song Deleted",
+      profile_updated:"Profile Updated"
+    };
+
+    // Filter controls
+    var h='<h2>📋 Activity Log</h2>';
+    h+='<div class="card" style="padding:10px">';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center">';
+    h+='<input id="log-search" placeholder="Search user or action..." oninput="filterLog()" style="margin:0">';
+    h+='<select id="log-filter" onchange="filterLog()" style="margin:0">'+
+      '<option value="">All Actions</option>'+
+      Object.keys(ACTION_LABELS).map(function(k){return'<option value="'+k+'">'+ACTION_LABELS[k]+'</option>';}).join("")+
+    '</select>';
+    h+='<button onclick="clearLog()" style="width:auto;padding:8px 12px;margin:0;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;font-size:12px">🗑 Clear</button>';
+    h+='</div>';
+    h+='<div style="font-size:12px;color:#999;margin-top:8px">'+entries.length+' entries (newest first)</div>';
+    h+='</div>';
+
+    if(!entries.length){
+      h+='<div class="card" style="text-align:center;color:#999;padding:30px">No activity yet. Actions will appear here as users interact with the app.</div>';
+      render(h);
+      return;
+    }
+
+    h+='<div id="log-entries">';
+
+    // Group by date
+    var lastDate="";
+    entries.forEach(function(e){
+      var dt  = new Date(e.timestamp||Date.now());
+      var dateStr = dt.toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+      var timeStr = dt.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
+      var icon  = ACTION_ICONS[e.action]  || "•";
+      var label = ACTION_LABELS[e.action] || e.action;
+      var roleColor = e.role==="admin"?"#7b5e3b":e.role==="co-admin"?"#9c7c3a":"#666";
+      var envBadge = e.env==="production"
+        ? '<span style="font-size:9px;background:#28a745;color:#fff;padding:1px 5px;border-radius:8px;margin-left:4px">PROD</span>'
+        : '<span style="font-size:9px;background:#ff9800;color:#fff;padding:1px 5px;border-radius:8px;margin-left:4px">SBX</span>';
+
+      if(dateStr!==lastDate){
+        h+='<div style="margin:16px 0 6px;font-size:12px;font-weight:bold;color:#999;text-transform:uppercase;letter-spacing:0.5px">'+dateStr+'</div>';
+        lastDate=dateStr;
+      }
+
+      h+='<div class="log-entry" data-action="'+e.action+'" data-user="'+(e.user||"").toLowerCase()+'" '+
+        'style="display:flex;align-items:start;gap:10px;padding:8px 10px;background:var(--bg);border-radius:6px;margin:3px 0;font-size:13px">'+
+        '<span style="font-size:18px;flex-shrink:0;margin-top:1px">'+icon+'</span>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">'+
+            '<b>'+label+'</b>'+
+            '<span style="font-size:11px;color:#999;white-space:nowrap">'+timeStr+'</span>'+
+          '</div>'+
+          (e.detail?'<div style="color:#666;margin-top:2px;font-size:12px">'+escHtml(e.detail)+'</div>':'')+
+          '<div style="margin-top:4px">'+
+            '<span style="font-size:11px;color:'+roleColor+'">'+e.user+'</span>'+
+            envBadge+
+          '</div>'+
+        '</div>'+
+      '</div>';
+    });
+
+    h+='</div>';
+    render(h);
+  });
+}
+
+function filterLog(){
+  var search  = (document.getElementById("log-search").value||"").toLowerCase();
+  var filter  = document.getElementById("log-filter").value;
+  var entries = document.querySelectorAll(".log-entry");
+  entries.forEach(function(el){
+    var action = el.getAttribute("data-action")||"";
+    var user   = el.getAttribute("data-user")||"";
+    var text   = el.textContent.toLowerCase();
+    var show   = (!filter || filter===action) && (!search || text.indexOf(search)>=0);
+    el.style.display = show ? "" : "none";
+  });
+}
+
+function clearLog(){
+  if(!confirm("Clear all activity log entries?\n\nThis cannot be undone.")) return;
+  ref.child("activityLog").remove().then(function(){
+    showLog();
+  });
+}
+
+function escHtml(s){
+  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
 
