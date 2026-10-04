@@ -2188,31 +2188,176 @@ function clearOff(){
 /* ===== CHAT ===== */
 function showChat(){
   setNav(isAdmin()?adminTabs():memberTabs());
-  render('<div class="card"><h2>Team Chat</h2>'+
-    '<div id="chatbox" style="border:1px solid var(--line);height:220px;overflow-y:auto;padding:10px;background:var(--bg);border-radius:6px;margin-bottom:10px">Loading...</div>'+
+  render(
+    '<div class="card"><h2>💬 Team Chat</h2>'+
+    '<div style="font-size:11px;color:#999;margin:-4px 0 8px">Tip: type @Name to mention someone</div>'+
+    '<div id="chatbox" style="border:1px solid var(--line);height:300px;overflow-y:auto;padding:10px;background:var(--bg);border-radius:6px;margin-bottom:10px">Loading...</div>'+
+    '<div id="mention-suggest" style="display:none;background:var(--card);border:1px solid var(--line);border-radius:6px;margin-bottom:6px;overflow:hidden"></div>'+
     '<div style="display:flex;gap:8px">'+
-    '<input id="cmsg" placeholder="Message..." style="margin:0;flex:1">'+
-    '<button onclick="sendMsg()" style="width:80px;margin:0">Send</button></div></div>');
-  
+    '<input id="cmsg" placeholder="Message... (Enter to send)" style="margin:0;flex:1" '+
+      'oninput="onChatInput(this)" onkeydown="onChatKey(event)">'+
+    '<button onclick="sendMsg()" style="width:80px;margin:0">Send</button>'+
+    '</div></div>'
+  );
+
   if(!fbReady) return;
-  
-  ref.child("messages").orderByChild("time").limitToLast(50).on("value",function(snap){
+
+  // Listen for new messages in real time
+  ref.child("messages").orderByChild("time").limitToLast(60).on("value",function(snap){
     var box=document.getElementById("chatbox");
     if(!box) return;
     var msgs=[];
-    if(snap.val()){for(var k in snap.val()) msgs.push(snap.val()[k]);}
-    box.innerHTML=msgs.map(function(m){
-      return '<div class="msg"><b>'+m.name+'</b> <span style="color:#999;font-size:10px">'+
-        new Date(m.time).toLocaleTimeString()+'</span><br>'+m.text+'</div>';
+    if(snap.val()){ for(var k in snap.val()) msgs.push(snap.val()[k]); }
+    msgs.sort(function(a,b){return (a.time||0)-(b.time||0);});
+
+    var me = uname();
+    box.innerHTML = msgs.map(function(m){
+      var isMine = m.name === me;
+      // Highlight @mentions of current user
+      var txt = m.text.replace(/@([\w ]+)/g, function(match, name){
+        var highlighted = name.trim().toLowerCase() === me.toLowerCase()
+          ? '<span style="background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px">@'+name+'</span>'
+          : '<span style="color:var(--accent);font-weight:bold">@'+name+'</span>';
+        return highlighted;
+      });
+
+      var align = isMine ? 'margin-left:auto;' : '';
+      var bg    = isMine ? 'background:var(--accent);color:#fff;' : 'background:var(--card);';
+      var nameColor = isMine ? 'color:rgba(255,255,255,0.8)' : 'color:#999';
+      var time  = new Date(m.time||0).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+
+      return '<div style="max-width:85%;'+align+'margin-bottom:8px">'+
+        '<div style="font-size:10px;'+nameColor+';margin-bottom:2px;'+(isMine?'text-align:right':'')+'">'+
+          (isMine ? time : '<b>'+m.name+'</b> · '+time)+
+        '</div>'+
+        '<div style="'+bg+'padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.4">'+txt+'</div>'+
+        '</div>';
     }).join("");
-    box.scrollTop=box.scrollHeight;
+    box.scrollTop = box.scrollHeight;
+  });
+
+  // Mark chat notifications as read
+  var me = uid();
+  ref.child("users/"+me+"/notifications").once("value").then(function(snap){
+    var notifs = snap.val()||{};
+    for(var k in notifs){
+      if(notifs[k].type==="mention") ref.child("users/"+me+"/notifications/"+k).update({read:true});
+    }
+    updateNotificationBadge();
   });
 }
+
+// ── Enter key sends message ──
+function onChatKey(e){
+  if(e.key==="Enter" && !e.shiftKey){
+    e.preventDefault();
+    sendMsg();
+  }
+}
+
+// ── @mention autocomplete ──
+function onChatInput(input){
+  var val = input.value;
+  var atIdx = val.lastIndexOf("@");
+  var suggest = document.getElementById("mention-suggest");
+  if(!suggest) return;
+
+  if(atIdx === -1){
+    suggest.style.display = "none";
+    return;
+  }
+
+  var partial = val.slice(atIdx+1).toLowerCase();
+  if(partial.includes(" ")){
+    suggest.style.display = "none";
+    return;
+  }
+
+  // Load users for suggestions
+  ref.child("users").once("value").then(function(snap){
+    var users = snap.val()||{};
+    var matches = [];
+    for(var k in users){
+      var u = users[k];
+      if(u.status==="approved" && u.name !== uname()){
+        if(!partial || u.name.toLowerCase().startsWith(partial)){
+          matches.push(u.name);
+        }
+      }
+    }
+
+    if(!matches.length){
+      suggest.style.display = "none";
+      return;
+    }
+
+    suggest.style.display = "block";
+    suggest.innerHTML = matches.slice(0,5).map(function(name){
+      return '<div onclick="insertMention(\''+name+'\')" '+
+        'style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--line)" '+
+        'onmouseover="this.style.background=\'var(--bg)\'" '+
+        'onmouseout="this.style.background=\'\'">'+
+        '👤 '+name+'</div>';
+    }).join("");
+  });
+}
+
+function insertMention(name){
+  var input = document.getElementById("cmsg");
+  var val = input.value;
+  var atIdx = val.lastIndexOf("@");
+  input.value = val.slice(0, atIdx) + "@"+name+" ";
+  input.focus();
+  var suggest = document.getElementById("mention-suggest");
+  if(suggest) suggest.style.display = "none";
+}
+
 function sendMsg(){
-  var tx=(document.getElementById("cmsg").value||"").trim();
-  if(!tx||!fbReady) return;
-  ref.child("messages").push({name:uname(),text:tx,time:Date.now()});
-  document.getElementById("cmsg").value="";
+  var el = document.getElementById("cmsg");
+  var tx = (el.value||"").trim();
+  if(!tx || !fbReady) return;
+
+  // Parse @mentions from the message
+  var mentions = [];
+  var mentionRe = /@([\w ]+?)(?=\s|$|@)/g;
+  var m;
+  while((m = mentionRe.exec(tx)) !== null){
+    mentions.push(m[1].trim());
+  }
+
+  // Save message
+  var msgData = { name:uname(), text:tx, time:Date.now() };
+  if(mentions.length) msgData.mentions = mentions;
+
+  ref.child("messages").push(msgData).then(function(){
+    el.value = "";
+    var suggest = document.getElementById("mention-suggest");
+    if(suggest) suggest.style.display = "none";
+
+    // Send notifications to mentioned users
+    if(mentions.length && fbReady){
+      ref.child("users").once("value").then(function(snap){
+        var users = snap.val()||{};
+        for(var k in users){
+          var u = users[k];
+          if(u.status !== "approved") continue;
+          // Check if this user was mentioned
+          var wasMentioned = mentions.some(function(mn){
+            return u.name.toLowerCase() === mn.toLowerCase();
+          });
+          if(wasMentioned && u.name !== uname()){
+            var notifId = "notif_"+Math.random().toString(36).substr(2,9);
+            ref.child("users/"+k+"/notifications/"+notifId).set({
+              type:      "mention",
+              message:   uname()+" mentioned you in chat: \""+tx.slice(0,80)+(tx.length>80?"...":"")+"\"",
+              timestamp: new Date().toISOString(),
+              read:      false
+            });
+          }
+        }
+      });
+    }
+  });
 }
 
 /* ===== TEAM ===== */
