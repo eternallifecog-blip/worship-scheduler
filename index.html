@@ -1,0 +1,2709 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Worship Scheduler</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#22201c;--accent:#7b5e3b;--line:#e3ded4}
+@media(prefers-color-scheme:dark){:root{--bg:#1b1917;--card:#252220;--ink:#f0ece5;--accent:#c9a877;--line:#3a3532}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,sans-serif}
+header{background:var(--card);padding:12px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:18px}h2{margin:10px 0;font-size:16px}h3{margin:12px 0 8px;font-size:14px}
+main{max-width:800px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);padding:14px;margin:12px 0;border-radius:8px}
+input,select,textarea{width:100%;padding:10px;margin:6px 0;border:1px solid var(--line);border-radius:6px;font-size:14px}
+button{background:var(--accent);color:#fff;border:0;padding:10px;border-radius:6px;cursor:pointer;margin:4px 0;width:100%}
+button.sec{background:transparent;color:var(--accent);border:1px solid var(--line)}
+label{display:block;margin:10px 0 2px;font-weight:600;font-size:12px;color:#999}
+.chip{display:inline-block;padding:6px 12px;border:1px solid var(--line);border-radius:20px;margin:4px;cursor:pointer;background:var(--bg);font-size:13px}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+nav{padding:8px;display:flex;gap:4px;overflow-x:auto;background:var(--card);border-bottom:1px solid var(--line)}
+nav button{margin:0;padding:8px 12px;width:auto;font-size:13px}
+.status{font-size:11px;color:#999;margin-top:4px}
+.song{background:var(--bg);padding:10px;margin:8px 0;border-radius:6px}
+.msg{background:var(--bg);padding:8px;margin:6px 0;border-radius:4px;font-size:12px}
+.pending{background:#fff3cd;padding:12px;border-radius:6px;margin:8px 0;border-left:4px solid #ff9800}
+.approved{background:#d4edda;padding:12px;border-radius:6px;margin:8px 0;border-left:4px solid #28a745}
+.green{background:#28a745}.red{background:#c23b22}
+.msg-ok{background:#e8f5e9;color:#2e7d32;padding:10px;border-radius:6px;margin:8px 0;border-left:4px solid #28a745}
+.msg-err{background:#ffebee;color:#c62828;padding:10px;border-radius:6px;margin:8px 0;border-left:4px solid #c62828}
+.msg-info{background:#fff3e0;color:#e65100;padding:10px;border-radius:6px;margin:8px 0;border-left:4px solid #ff9800}
+</style>
+</head>
+<body>
+<header>
+  <div style="display:flex;align-items:center;gap:10px">
+    <h1 style="margin:0">🎵 Worship Scheduler</h1>
+    <span id="env-badge"></span>
+  </div>
+  <div id="uinfo" style="font-size:12px;color:#999;margin-top:4px"></div>
+  <div class="status" id="synctxt">⏳ Starting...</div>
+</header>
+<nav id="mainnav"></nav>
+<main id="main"></main>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script>
+var db, ref;
+var fbReady = false;
+var tab = "home";
+var selDays = {};
+var INST = ["Drums","Vocals","Bass Guitar","Acoustic Guitar","Piano","Media","Sound"];
+var KEYS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+// -- EmailJS config (admin fills these in Settings tab) --
+// Get free account at https://www.emailjs.com
+// Store in Firebase so admin can set via UI
+var EJS = { ready: false };
+function initEmailJS(pubKey){ if(pubKey){ emailjs.init(pubKey); EJS.ready=true; } }
+
+// ── Firebase configs ──────────────────────────────────────────────────────────
+var FB_PROD = {
+  apiKey:            "AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
+  authDomain:        "elc-worship-schedule.firebaseapp.com",
+  databaseURL:       "https://elc-worship-schedule-default-rtdb.firebaseio.com",
+  projectId:         "elc-worship-schedule",
+  storageBucket:     "elc-worship-schedule.firebasestorage.app",
+  messagingSenderId: "868888139963",
+  appId:             "1:868888139963:web:2d933464a111b2b17c319e"
+};
+
+// PASTE YOUR SANDBOX CONFIG HERE after creating elc-worship-dev in Firebase Console
+var FB_SANDBOX = {
+  apiKey:            "AIzaSy...",
+  authDomain:        "elc-worship-dev.firebaseapp.com",
+  databaseURL:       "https://elc-worship-dev-default-rtdb.firebaseio.com",
+  projectId:         "elc-worship-dev",
+  storageBucket:     "elc-worship-dev.firebasestorage.app",
+  messagingSenderId: "123456789",
+  appId:             "1:123456789:web:abc123"
+};
+
+// ── Auto-detect environment from hostname ─────────────────────────────────────
+// Production:  yourname.github.io/worship-scheduler  (or custom domain)
+// Sandbox:     yourname.github.io/worship-scheduler-dev  (or localhost)
+(function(){
+  var host = window.location.hostname;
+  var path = window.location.pathname;
+  var isSandbox = (host === "localhost" || host === "127.0.0.1")
+               || path.indexOf("-dev") !== -1
+               || path.indexOf("/dev/") !== -1;
+
+  window.IS_PROD = !isSandbox;
+  window.ENV     = isSandbox ? "sandbox" : "production";
+  window.FB      = isSandbox ? FB_SANDBOX : FB_PROD;
+
+  // Show environment badge
+  var badge = document.getElementById("env-badge");
+  if(badge){
+    badge.innerHTML = isSandbox
+      ? '<span style="background:#f57c00;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:bold;letter-spacing:0.5px">🟡 SANDBOX</span>'
+      : '<span style="background:#28a745;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:bold;letter-spacing:0.5px">🟢 PRODUCTION</span>';
+  }
+})();
+
+// Initialize Firebase immediately (scripts loaded synchronously above)
+(function(){
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(FB);
+    db  = firebase.database();
+    ref = db.ref("worship");
+    fbReady = true;
+    document.getElementById("synctxt").textContent = "✓ Connected";
+
+    db.ref(".info/connected").on("value", function(s){
+      document.getElementById("synctxt").textContent = s.val() ? "✓ Connected" : "✗ Offline";
+    });
+
+    // Load custom instruments from Firebase (if admin has customized)
+    ref.child("settings/instruments").once("value").then(function(snap){
+      if(snap.val() && Array.isArray(snap.val()) && snap.val().length > 0){
+        INST = snap.val();
+      }
+      start();
+    }).catch(function(){ start(); });
+
+  }catch(e){
+    document.getElementById("synctxt").textContent = "✗ Error: " + e.message;
+    console.error("Firebase init error:", e);
+    start();
+  }
+})();
+
+function uid(){return sessionStorage.getItem("uid")}
+function uname(){return sessionStorage.getItem("name")}
+function urole(){return sessionStorage.getItem("role")}
+function uinst(){return sessionStorage.getItem("inst")||""}
+
+function isAdmin(){var r=urole();return r==="admin"||r==="co-admin"}
+
+function render(h){document.getElementById("main").innerHTML=h}
+
+function setNav(tabs){
+  document.getElementById("mainnav").innerHTML=tabs.map(function(t){
+    return '<button class="'+(t[0]===tab?"active":"")+(t[0]==="logout"?" sec":"")+
+      '" onclick="goTab(\''+t[0]+'\')">'+t[1]+'</button>';
+  }).join("");
+}
+
+function setHeader(){
+  if(uname()){
+    var r=urole();
+    var icon=r==="admin"?"👑":r==="co-admin"?"⭐":"👤";
+    var inst=uinst().replace(/\|/g,", ");
+    document.getElementById("uinfo").innerHTML=
+      '<span style="font-weight:bold">'+icon+' '+uname()+'</span>'+
+      ' <span style="color:#aaa;font-size:11px">('+r+')</span>'+
+      (inst?'&nbsp;&nbsp;<span style="color:#aaa;font-size:11px">'+inst+'</span>':'');
+  }else{
+    document.getElementById("uinfo").textContent="";
+  }
+}
+
+function goTab(t){
+  if(t==="logout"){logout();return;}
+  tab=t; start();
+}
+
+function start(){
+  checkRsvpFromUrl();
+  setHeader();
+  if(!uid()){showLogin();return;}
+  if(!uinst()){showInst();return;}
+  if(tab==="home") showHome();
+  else if(tab==="manage") showManage();
+  else if(tab==="plan") showPlan();
+  else if(tab==="songs") showSongs();
+  else if(tab==="my") showMy();
+  else if(tab==="avail") showAvail();
+  else if(tab==="chat") showChat();
+  else if(tab==="team") showTeam();
+  else if(tab==="settings") showSettings();
+  else if(tab==="profile") showProfile();
+  else if(tab==="log") showLog();
+  else showHome();
+}
+
+function adminTabs(){return[["home","Home"],["manage","👥 Users"],["songs","Songs"],["chat","Chat"],["settings","⚙️"],["log","📋 Log"],["profile","👤"],["logout","Logout"]]}
+function memberTabs(){return[["home","Home"],["songs","Songs"],["avail","Off"],["chat","Chat"],["profile","👤"],["logout","Logout"]]}
+
+function logout(){
+  logActivity("logout","Signed out");
+  sessionStorage.clear();tab="home";start();
+}
+
+/* -- Activity Logger -- */
+function logActivity(action, detail){
+  if(!fbReady) return;
+  var me = sessionStorage.getItem("name")||"Unknown";
+  var role = sessionStorage.getItem("role")||"";
+  var entry = {
+    action:    action,
+    detail:    detail||"",
+    user:      me,
+    role:      role,
+    env:       ENV,
+    timestamp: new Date().toISOString(),
+    ts:        Date.now()
+  };
+  // Push with auto-id; keep last 500 entries (pruned in showLog)
+  ref.child("activityLog").push(entry).catch(function(){});
+}
+
+/* ===== LOGIN ===== */
+function showLogin(){
+  setNav([]);
+  render('<div class="card" style="max-width:500px;margin:0 auto" id="logincard"><div class="msg-info">... Checking database...</div></div>');
+  
+  if(!fbReady){
+    document.getElementById("logincard").innerHTML='<h2>🎵 Worship Scheduler</h2><div class="msg-err">... Firebase is loading. Please wait and refresh.</div>';
+    return;
+  }
+  
+  ref.child("users").once("value").then(function(snap){
+    var users=snap.val()||{};
+    var hasAdmin=Object.keys(users).some(function(k){
+      return users[k].role==="admin"||users[k].role==="co-admin";
+    });
+    
+    var html='<h2>🎵 Worship Scheduler</h2>';
+    
+    if(!hasAdmin){
+      html+='<div class="msg-ok"><b>👑 Setup: Create Your Admin Account</b><br>You are the first user - you will be Admin.</div>'+
+        '<input id="nm" placeholder="Full Name"><input id="em" type="email" placeholder="Email">'+
+        '<input id="ph" type="tel" placeholder="Phone"><input id="pw" type="password" placeholder="Password (4+ chars)">'+
+        '<button onclick="doSignup(true)" style="background:#28a745">Create Admin Account</button>'+
+        '<div id="smsg"></div>';
+    }else{
+      html+='<div class="msg-info"><b> Join the Team</b><br>Your account needs admin approval before signing in.</div>'+
+        '<input id="nm" placeholder="Full Name"><input id="em" type="email" placeholder="Email">'+
+        '<input id="ph" type="tel" placeholder="Phone"><input id="pw" type="password" placeholder="Password (4+ chars)">'+
+        '<button onclick="doSignup(false)">Request to Join</button>'+
+        '<div id="smsg"></div>';
+    }
+    
+    html+='<div style="border-top:1px solid var(--line);margin:20px 0;padding-top:20px">'+
+      '<h3 style="margin-top:0">🔑 Sign In</h3>'+
+      '<input id="sn" placeholder="Your Name"><input id="sp" type="password" placeholder="Password">'+
+      '<button class="sec" onclick="doSignin()">Sign In</button>'+
+      '<div id="inmsg"></div></div>';
+    
+    if(!hasAdmin){
+      html+='<div style="border-top:1px solid var(--line);margin-top:20px;padding-top:12px">'+
+        '<p style="font-size:12px;color:#999;margin:0 0 8px">Stuck? Clear old data:</p>'+
+        '<button class="sec" style="color:#c62828;border-color:#c62828" onclick="doReset()">🗑 Clear All & Start Fresh</button>'+
+        '<div id="rmsg"></div></div>';
+    }
+    
+    document.getElementById("logincard").innerHTML=html;
+  });
+}
+
+function doSignup(isFirst){
+  var nm=(document.getElementById("nm").value||"").trim();
+  var em=(document.getElementById("em").value||"").trim();
+  var ph=(document.getElementById("ph").value||"").trim();
+  var pw=(document.getElementById("pw").value||"");
+  var msg=document.getElementById("smsg");
+  
+  if(!nm||!em||!ph||pw.length<4){msg.innerHTML='<div class="msg-err">x Fill all fields (password 4+ chars)</div>';return;}
+  if(!fbReady){msg.innerHTML='<div class="msg-err">... Firebase not ready</div>';return;}
+  
+  msg.innerHTML='<div class="msg-info">... Creating account...</div>';
+  
+  var id="u_"+Math.random().toString(36).substr(2,9);
+  ref.child("users/"+id).set({
+    name:nm,email:em,phone:ph,pass:pw,
+    role:isFirst?"admin":"member",
+    status:"approved",  /* all auto-approved; admin manages via manage tab */
+    inst:[],off:{},
+    createdAt:Date.now()
+  },function(err){
+    if(err){msg.innerHTML='<div class="msg-err">x '+err.message+'</div>';}
+    else{
+      if(isFirst){
+        msg.innerHTML='<div class="msg-ok">✅ Admin account created! Sign in below.</div>';
+        alert("✅ Admin Account Created!\n\nNow sign in below with your name and password.");
+      }else{
+        msg.innerHTML='<div class="msg-ok">✅ Account created! Sign in below.</div>';
+        alert("✅ Account created!\n\nSign in below.");
+      }
+    }
+  });
+}
+
+function doSignin(){
+  var nm=(document.getElementById("sn").value||"").trim();
+  var pw=(document.getElementById("sp").value||"");
+  var msg=document.getElementById("inmsg");
+  
+  if(!nm||!pw){msg.innerHTML='<div class="msg-err">x Enter name and password</div>';return;}
+  if(!fbReady){msg.innerHTML='<div class="msg-err">... Firebase not ready</div>';return;}
+  
+  msg.innerHTML='<div class="msg-info">... Signing in...</div>';
+  
+  ref.child("users").once("value").then(function(snap){
+    var users=snap.val()||{};
+    var fk=null,fu=null;
+    
+    for(var k in users){
+      if(users[k].name===nm){fk=k;fu=users[k];break;}
+    }
+    
+    if(!fu){msg.innerHTML='<div class="msg-err">x Name not found</div>';return;}
+    if(fu.pass!==pw){msg.innerHTML='<div class="msg-err">x Password incorrect</div>';return;}
+    if(fu.status==="pending"){msg.innerHTML='<div class="msg-err">... Awaiting admin approval</div>';return;}
+    if(fu.status==="rejected"){msg.innerHTML='<div class="msg-err">x Account rejected by admin</div>';return;}
+    
+    sessionStorage.setItem("uid",fk);
+    sessionStorage.setItem("name",fu.name);
+    sessionStorage.setItem("role",fu.role);
+    sessionStorage.setItem("inst",fu.inst&&fu.inst.length?fu.inst.join("|"):"");
+    tab="home";
+    start();
+    logActivity("login","Signed in as "+fu.role);
+  });
+}
+
+function doReset(){
+  if(!confirm("Delete ALL users and start fresh?")) return;
+  ref.child("users").remove(function(err){
+    var msg=document.getElementById("rmsg");
+    if(err){msg.innerHTML='<div class="msg-err">x '+err.message+'</div>';}
+    else{msg.innerHTML='<div class="msg-ok">✅ Cleared! Now create admin above.</div>';showLogin();}
+  });
+}
+
+/* ===== INSTRUMENTS ===== */
+function showInst(){
+  setNav([]);
+  var sel=uinst().split("|").filter(function(x){return x;});
+  var h='<div class="card"><h2>🎸 Select Your Instruments</h2>';
+  INST.forEach(function(n){
+    h+='<span class="chip'+(sel.indexOf(n)>=0?" on":"")+'" onclick="tglInst(\''+n+'\')">'+n+'</span>';
+  });
+  h+='<button style="margin-top:20px" onclick="saveInst()">Continue</button></div>';
+  render(h);
+}
+function tglInst(n){
+  var sel=uinst().split("|").filter(function(x){return x;});
+  var i=sel.indexOf(n);i>=0?sel.splice(i,1):sel.push(n);
+  sessionStorage.setItem("inst",sel.join("|"));
+  showInst();
+}
+function saveInst(){
+  var sel=uinst().split("|").filter(function(x){return x;});
+  if(!sel.length){alert("Pick at least one");return;}
+  if(fbReady) ref.child("users/"+uid()).update({inst:sel});
+  tab="home";start();
+}
+
+/* ===== HOME ===== */
+function showHome(){
+  if(isAdmin()){
+    showPlan(); // Admin home = Plan
+  } else {
+    showMemberHome(); // Member home = upcoming services + RSVP
+  }
+}
+
+function showMemberHome(){
+  setNav(memberTabs());
+  render('<h2>📅 Your Services</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+  var me=uid();
+
+  // Load services, users, songs AND pdf metadata all at once
+  Promise.all([
+    ref.child("services").once("value"),
+    ref.child("users").once("value"),
+    ref.child("songs").once("value"),
+    ref.child("svcFiles").once("value")   // PDF metadata stored separately
+  ]).then(function(results){
+    var svcs      = results[0].val()||{};
+    var users     = results[1].val()||{};
+    var songs     = results[2].val()||{};
+    var svcFiles  = results[3].val()||{}; // {sid: {pdfs:{...}, combinedPdf:{name,size,...}}}
+
+    var today = new Date().toISOString().split("T")[0];
+    var h='<h2>📅 Your Services</h2>';
+    var found=false;
+    var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
+
+    keys.forEach(function(k){
+      var s=svcs[k];
+      if(s.date<today) return;
+      if(!s.slots) return;
+      var myInst=[];
+      for(var ins in s.slots){
+        if(s.slots[ins]&&s.slots[ins][me]) myInst.push(ins);
+      }
+      if(!myInst.length) return;
+      found=true;
+
+      var rsvpStatus=(s.rsvp&&s.rsvp[me])||"pending";
+      var rsvpColor=rsvpStatus==="accepted"?"#28a745":rsvpStatus==="denied"?"#c62828":"#e65100";
+      var rsvpLabel=rsvpStatus==="accepted"?"✅ Accepted":rsvpStatus==="denied"?"❌ Declined":"⏳ Respond";
+      var svcSongs=s.songs?Object.keys(s.songs).map(function(sk){return{id:sk,title:s.songs[sk],data:songs[sk]};}).filter(function(x){return x.title;}):[];
+      var fileData=svcFiles[k]||{};
+      var pdfMeta=fileData.pdfs||{};
+      var combinedMeta=fileData.combinedPdf||null;
+
+      h+='<div class="card">';
+
+      // Header row
+      h+='<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px">'+
+        '<div>'+
+          '<b style="font-size:16px">'+s.name+'</b><br>'+
+          '<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small>'+
+        '</div>'+
+        '<span style="background:'+rsvpColor+';color:#fff;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:bold;white-space:nowrap">'+rsvpLabel+'</span>'+
+        '</div>';
+
+      // Instrument badges
+      h+=myInst.map(function(i){return'<span style="background:var(--accent);color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:bold;margin-right:4px">'+i+'</span>';}).join('');
+
+      // RSVP buttons
+      if(rsvpStatus==="pending"){
+        h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 4px">'+
+          '<button onclick="rsvpService(\''+k+'\',\'accepted\')" style="background:#28a745;margin:0;padding:10px">✅ Accept</button>'+
+          '<button onclick="rsvpService(\''+k+'\',\'denied\')" style="background:#c23b22;margin:0;padding:10px">❌ Decline</button>'+
+          '</div>';
+      } else {
+        h+='<div style="margin:8px 0">'+
+          '<button class="sec" onclick="rsvpService(\''+k+'\','+(rsvpStatus==="accepted"?"'denied'":"'accepted'")+
+          ')" style="width:auto;padding:6px 14px;font-size:12px">'+
+          (rsvpStatus==="accepted"?"Change to ❌ Decline":"Change to ✅ Accept")+
+          '</button></div>';
+      }
+
+      // PDFs section — Combined first, then individual
+      var hasPdfs = Object.keys(pdfMeta).length > 0;
+      if(combinedMeta || hasPdfs){
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">📄 Service Files</b>';
+
+        if(combinedMeta){
+          h+='<button onclick="viewPdf(\''+k+'\',\'combined\')" '+
+            'style="display:flex;align-items:center;gap:10px;margin:10px 0 6px;padding:12px 14px;width:100%;'+
+            'background:#28a745;color:#fff;border-radius:8px;border:none;cursor:pointer;font-weight:bold;text-align:left">'+
+            '<span style="font-size:22px">📦</span>'+
+            '<div><div style="font-size:14px">Combined PDF</div>'+
+            '<div style="font-size:11px;opacity:0.85">All files merged · '+Math.round((combinedMeta.size||0)/1024)+' KB</div></div>'+
+            '</button>';
+        }
+
+        if(hasPdfs){
+          Object.keys(pdfMeta).forEach(function(pk){
+            var pm=pdfMeta[pk];
+            h+='<button onclick="viewPdf(\''+k+'\',\''+pk+'\')" '+
+              'style="display:flex;align-items:center;gap:10px;padding:10px 12px;width:100%;'+
+              'background:var(--card);border:1px solid var(--line);border-radius:6px;margin:4px 0;cursor:pointer;text-align:left">'+
+              '<span style="font-size:18px">📄</span>'+
+              '<div style="flex:1;min-width:0">'+
+                '<div style="font-size:13px;font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)">'+pm.name+'</div>'+
+                '<div style="font-size:11px;color:#999">'+Math.round((pm.size||0)/1024)+' KB</div>'+
+              '</div>'+
+              '<span style="font-size:12px;color:var(--accent)">Open ›</span>'+
+            '</button>';
+          });
+        }
+        h+='</div>';
+      }
+
+      // Songs section
+      if(svcSongs.length){
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">🎵 Songs</b>';
+        svcSongs.forEach(function(sg){
+          h+='<div style="margin-top:8px;padding:10px;background:var(--card);border-radius:6px;border-left:3px solid var(--accent)">'+
+            '<b style="font-size:14px">'+sg.title+'</b>';
+          if(sg.data){
+            if(sg.data.key) h+=' <span style="font-size:11px;color:#999">Key: <b>'+sg.data.key+'</b></span>';
+            if(sg.data.chords) h+='<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent);font-size:12px">🎸 Chords</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:160px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.chords+'</pre></details>';
+            if(sg.data.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">🔢 Number Chart</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:160px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.numberChart+'</pre></details>';
+            if(sg.data.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">📝 Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:160px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;margin-top:4px">'+sg.data.lyrics+'</pre></details>';
+          }
+          h+='</div>';
+        });
+        h+='</div>';
+      }
+
+      // Team list
+      var teamByInst={};
+      for(var ins in s.slots){
+        var pids=Object.keys(s.slots[ins]||{});
+        if(pids.length) teamByInst[ins]=pids.map(function(pid){return users[pid]?users[pid].name:"?";});
+      }
+      var tkeys=Object.keys(teamByInst);
+      if(tkeys.length){
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">👥 Team</b>';
+        tkeys.forEach(function(ins){
+          h+='<div style="font-size:13px;margin-top:6px"><span style="color:#999;font-size:12px">'+ins+':</span> '+teamByInst[ins].join(", ")+'</div>';
+        });
+        h+='</div>';
+      }
+
+      h+='</div>'; // end card
+    });
+
+    if(!found){
+      h='<h2>📅 Your Services</h2><div class="card" style="text-align:center;color:#999;padding:30px">No upcoming services assigned to you</div>';
+    }
+    render(h);
+  });
+}
+
+/* ===== USER MANAGEMENT (Admin) ===== */
+function showManage(){
+  setNav(adminTabs());
+  render('<h2>👥 User Management</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+  
+  ref.child("users").once("value").then(function(snap){
+    var users=snap.val()||{};
+    var pending=[],approved=[];
+    for(var k in users){
+      var u=users[k]; u._id=k;
+      if(u.status==="pending") pending.push(u);
+      else if(u.status==="approved") approved.push(u);
+    }
+    
+    var h='<h2>👥 User Management</h2>';
+    
+    if(pending.length){
+      h+='<h3>... Pending Requests ('+pending.length+')</h3>';
+      pending.forEach(function(u){
+        h+='<div class="card pending"><b>'+u.name+'</b>'+
+          '<div style="font-size:12px;margin:8px 0;color:#666">📧 '+u.email+'<br>📱 '+u.phone+'</div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+          '<button class="green" style="margin:0" onclick="approveUser(\''+u._id+'\',\''+u.name+'\')">✓ Approve</button>'+
+          '<button class="red" style="margin:0" onclick="rejectUser(\''+u._id+'\',\''+u.name+'\')">✗ Reject</button>'+
+          '</div></div>';
+      });
+    }else{
+      h+='<div class="card" style="color:#999">No pending requests</div>';
+    }
+    
+    if(approved.length){
+      h+='<h3>✓ Approved Members ('+approved.length+')</h3>';
+      approved.forEach(function(u){
+        var isCoA=u.role==="co-admin";
+        h+='<div class="card approved"><b>'+
+          (u.role==="admin"?"👑":isCoA?"⭐":"👤")+' '+u.name+'</b>'+
+          '<div style="font-size:12px;color:#666;margin:4px 0">'+
+          (u.inst&&u.inst.length?u.inst.join(", "):"No instruments")+'</div>';
+        if(u.role!=="admin"){
+          h+=isCoA?
+            '<button class="sec" style="margin-top:8px" onclick="demote(\''+u._id+'\',\''+u.name+'\')">⬇ Remove Co-Admin</button>':
+            '<button class="sec" style="margin-top:8px" onclick="promote(\''+u._id+'\',\''+u.name+'\')">* Make Co-Admin</button>';
+        }
+        h+='</div>';
+      });
+    }
+    
+    render(h);
+  });
+}
+function approveUser(id,name){
+  logActivity("user_approved","Approved: "+name);
+  ref.child("users/"+id).update({status:"approved"}).then(function(){
+    alert("✅ "+name+" approved!");
+    showManage();
+  });
+}
+function rejectUser(id,name){
+  if(!confirm("Reject "+name+"?")) return;
+  logActivity("user_rejected","Rejected: "+name);
+  ref.child("users/"+id).update({status:"rejected"}).then(function(){
+    showManage();
+  });
+}
+function promote(id,name){
+  logActivity("promoted_coadmin",name+" -> Co-Admin");
+  ref.child("users/"+id).update({role:"co-admin"}).then(function(){
+    alert("⭐ "+name+" is now Co-Admin!");
+    showManage();
+  });
+}
+function demote(id,name){
+  logActivity("demoted_coadmin",name+" -> Member");
+  ref.child("users/"+id).update({role:"member"}).then(function(){
+    alert(name+" is now Member");
+    showManage();
+  });
+}
+
+/* ===== PLAN (Admin) - shown on Home tab ===== */
+function showPlan(){
+  setNav(adminTabs());
+  var h='<div class="card"><h2>Plan Service</h2>'+
+    '<label>Type</label><select id="st"><option>Sunday</option><option>Practice</option><option>Friday Prayer</option><option>Special</option></select>'+
+    '<label>Date</label><input type="date" id="sd">'+
+    '<label>Time</label><input type="time" id="sm" value="10:00">'+
+    '<button onclick="addSvc()">Add Service</button></div>';
+  if(!fbReady){render(h);return;}
+  ref.child("services").once("value").then(function(snap){
+    var svcs=snap.val()||{};
+    var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
+    if(!keys.length){
+      h+='<div class="card" style="text-align:center;color:#999;padding:20px">No services planned yet</div>';
+    }
+    keys.forEach(function(k){
+      var s=svcs[k];
+      var slist=s.songs?Object.values(s.songs).map(function(t){
+        return'<span style="display:inline-block;background:var(--accent);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;margin:2px">🎵 '+t+'</span>';
+      }).join(''):'';
+      h+='<div class="card">'+
+        '<div style="display:flex;justify-content:space-between;align-items:start">'+
+        '<div>'+
+        '<b>'+s.name+'</b> <small style="color:#999">'+s.date+' '+s.time+'</small>'+
+        (slist?'<div style="margin-top:6px">'+slist+'</div>':'')+
+        '</div>'+
+        '<button onclick="deleteSvc(\''+k+'\',\''+s.name+'\',\''+s.date+'\')" '+
+        'style="width:36px;height:36px;padding:0;margin:0;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:6px;font-size:16px;flex-shrink:0" '+
+        'title="Delete service">🗑</button>'+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">'+
+        '<button class="sec" onclick="editSvc(\''+k+'\')">👥 Team</button>'+
+        '<button class="sec" onclick="editSvcSongs(\''+k+'\')">🎵 Songs</button>'+
+        '</div></div>';
+    });
+    render(h);
+  });
+}
+
+function deleteSvc(id, name, date){
+  if(!confirm('Delete "'+name+'" on '+date+'?\n\nThis will also remove all team assignments and songs for this service.')){
+    return;
+  }
+  ref.child("services/"+id).remove().then(function(){
+    logActivity("service_deleted","Deleted: "+name+" on "+date);
+    showHome();
+  }).catch(function(e){
+    alert("Error deleting: "+e.message);
+  });
+}
+function addSvc(){
+  var d  = document.getElementById("sd").value;
+  var tm = document.getElementById("sm").value;
+  var nm = document.getElementById("st").value;
+  
+  if(!d){ alert("Pick a date"); return; }
+  
+  // Check for duplicate: same date + same time
+  ref.child("services").once("value").then(function(snap){
+    var svcs = snap.val()||{};
+    var duplicate = false;
+    var dupName = "";
+    
+    for(var k in svcs){
+      if(svcs[k].date === d && svcs[k].time === tm){
+        duplicate = true;
+        dupName = svcs[k].name;
+        break;
+      }
+    }
+    
+    if(duplicate){
+      alert("⚠️ A service already exists on " + d + " at " + tm + "\n\n\"" + dupName + "\" is already scheduled at that time.\n\nPlease choose a different date or time.");
+      return;
+    }
+    
+    // No duplicate - save
+    var id = "s_" + Math.random().toString(36).substr(2,9);
+    logActivity("service_created","Created: "+nm+" on "+d);
+    ref.child("services/"+id).set({
+      name: nm,
+      date: d,
+      time: tm,
+      slots: {},
+      songs: {}
+    }).then(function(){
+      // Clear the form fields
+      document.getElementById("sd").value = "";
+      showHome();
+    });
+  });
+}
+function editSvc(id){
+  setNav(adminTabs());
+  render('<div class="card">Loading...</div>');
+  ref.child("services/"+id).once("value").then(function(ss){
+    var s=ss.val(); if(!s) return showHome();
+    ref.child("users").once("value").then(function(us){
+      var users={}, ud=us.val()||{};
+      for(var k in ud){ if(ud[k].status==="approved") users[k]=ud[k]; }
+      
+      var svcDate = s.date; // e.g. "2026-10-05"
+      
+      // Build availability map: uid -> true (available) / false (off)
+      var avail={};
+      for(var k in users){
+        var offDays = users[k].off||{};
+        avail[k] = !offDays[svcDate]; // true = available
+      }
+      
+      // Count available per instrument
+      var availCount={};
+      INST.forEach(function(ins){
+        availCount[ins]=0;
+        for(var k in users){
+          if(users[k].inst&&users[k].inst.indexOf(ins)>=0&&avail[k]) availCount[ins]++;
+        }
+      });
+      
+      var h='<div class="card">';
+
+      // Service header
+      h+='<h2>'+s.name+'</h2>';
+      h+='<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small>';
+
+      // RSVP summary
+      var rsvpData = s.rsvp||{};
+      var rsvpAccepted=[], rsvpDenied=[], rsvpPending=[];
+      for(var ins2 in (s.slots||{})){
+        for(var uid2 in s.slots[ins2]){
+          if(!users[uid2]) continue;
+          var st=rsvpData[uid2]||"pending";
+          var nm2=users[uid2].name+" ("+ins2+")";
+          if(st==="accepted") rsvpAccepted.push(nm2);
+          else if(st==="denied") rsvpDenied.push(nm2);
+          else rsvpPending.push(nm2);
+        }
+      }
+      
+      // Availability summary bar
+      h+='<div style="margin:14px 0;padding:12px;background:var(--bg);border-radius:8px">'+
+        '<b style="font-size:13px">👥 Availability on '+s.date+'</b>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">';
+      INST.forEach(function(ins){
+        var assigned = s.slots&&s.slots[ins] ? Object.keys(s.slots[ins]).length : 0;
+        var total = 0;
+        for(var k in users){ if(users[k].inst&&users[k].inst.indexOf(ins)>=0) total++; }
+        var avl = availCount[ins];
+        var color = avl===0 ? '#c62828' : avl<2 ? '#e65100' : '#2e7d32';
+        h+='<div style="background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px 12px;text-align:center;min-width:100px">'+
+          '<div style="font-size:11px;color:#999;margin-bottom:2px">'+ins+'</div>'+
+          '<div style="font-size:18px;font-weight:bold;color:'+color+'">'+avl+'<span style="font-size:12px;font-weight:normal;color:#999">/'+total+'</span></div>'+
+          '<div style="font-size:10px;color:#999">available</div>'+
+          (assigned?'<div style="font-size:10px;color:var(--accent)">'+assigned+' assigned</div>':'')+
+          '</div>';
+      });
+      h+='</div></div>';
+      
+      // RSVP summary panel
+      if(rsvpAccepted.length||rsvpDenied.length||rsvpPending.length){
+        h+='<div style="margin:0 0 14px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">📬 RSVP Status</b>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">'+
+          '<div style="background:#e8f5e9;padding:8px;border-radius:6px;border-left:3px solid #28a745">'+
+            '<div style="font-size:11px;font-weight:bold;color:#2e7d32">✅ ACCEPTED ('+rsvpAccepted.length+')</div>'+
+            rsvpAccepted.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
+            (!rsvpAccepted.length?'<div style="font-size:12px;color:#999">-</div>':'')+
+          '</div>'+
+          '<div style="background:#ffebee;padding:8px;border-radius:6px;border-left:3px solid #c62828">'+
+            '<div style="font-size:11px;font-weight:bold;color:#c62828">x DECLINED ('+rsvpDenied.length+')</div>'+
+            rsvpDenied.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
+            (!rsvpDenied.length?'<div style="font-size:12px;color:#999">-</div>':'')+
+          '</div>'+
+          '<div style="background:#fff3e0;padding:8px;border-radius:6px;border-left:3px solid #ff9800">'+
+            '<div style="font-size:11px;font-weight:bold;color:#e65100">... PENDING ('+rsvpPending.length+')</div>'+
+            rsvpPending.map(function(n){return'<div style="font-size:12px;margin-top:4px">'+n+'</div>';}).join("")+
+            (!rsvpPending.length?'<div style="font-size:12px;color:#999">-</div>':'')+
+          '</div></div></div>';
+      }
+
+      // Songs assigned to this service
+      if(s.songs&&Object.keys(s.songs).length){
+        h+='<div style="margin-bottom:14px"><label><b>🎵 Songs</b></label>';
+        for(var sk in s.songs){
+          h+='<div style="background:var(--bg);padding:6px 10px;border-radius:4px;margin:4px 0;font-size:13px;display:flex;justify-content:space-between;align-items:center">'+
+            '<span>🎵 '+s.songs[sk]+'</span>'+
+            '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px" onclick="removeSvcSong(\''+id+'\',\''+sk+'\')">Remove</button></div>';
+        }
+        h+='</div>';
+      }
+      
+      // Per-instrument assignment with availability indicators
+      INST.forEach(function(ins){
+        var assigned = s.slots&&s.slots[ins] ? s.slots[ins] : {};
+        var assignedCount = Object.keys(assigned).length;
+        
+        h+='<div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px">';
+        h+='<label style="margin:0 0 8px 0"><b>'+ins+'</b></label>';
+        
+        // Already assigned members
+        for(var aid in assigned){
+          if(users[aid]){
+            var memberRsvp = rsvpData[aid]||"pending";
+            var rBadge = memberRsvp==="accepted"
+              ? '<span style="font-size:10px;background:#28a745;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">✅ Accepted</span>'
+              : memberRsvp==="denied"
+              ? '<span style="font-size:10px;background:#c62828;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">x Declined</span>'
+              : '<span style="font-size:10px;background:#ff9800;color:#fff;padding:2px 6px;border-radius:8px;margin-left:6px">... Pending</span>';
+            h+='<div style="background:var(--accent);color:#fff;padding:8px 10px;margin:4px 0;display:flex;justify-content:space-between;align-items:center;border-radius:6px;font-size:13px">'+
+              '<span>✓ '+users[aid].name+rBadge+'</span>'+
+              '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" onclick="delAssign(\''+id+'\',\''+ins+'\',\''+aid+'\')">Remove</button></div>';
+          }
+        }
+        
+        // Available members for this instrument (not yet assigned)
+        var availMembers=[], unavailMembers=[];
+        for(var k in users){
+          var u=users[k];
+          if(u.inst&&u.inst.indexOf(ins)>=0&&!(assigned&&assigned[k])){
+            if(avail[k]) availMembers.push({id:k,name:u.name});
+            else unavailMembers.push({id:k,name:u.name});
+          }
+        }
+        
+        // Show available members as green chips (clickable to assign)
+        if(availMembers.length){
+          h+='<div style="margin-top:8px">';
+          h+='<div style="font-size:11px;color:#2e7d32;margin-bottom:4px">✅ Available (tap to assign)</div>';
+          availMembers.forEach(function(m){
+            h+='<span onclick="addAssign(\''+id+'\',\''+ins+'\',\''+m.id+'\')" '+
+              'style="display:inline-block;margin:3px;padding:6px 12px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:20px;font-size:13px;cursor:pointer">'+
+              '+ '+m.name+'</span>';
+          });
+          h+='</div>';
+        }
+        
+        // Show unavailable members as red chips (greyed out, still assignable via dropdown)
+        if(unavailMembers.length){
+          h+='<div style="margin-top:8px">';
+          h+='<div style="font-size:11px;color:#c62828;margin-bottom:4px">x Off / Unavailable</div>';
+          unavailMembers.forEach(function(m){
+            h+='<span style="display:inline-block;margin:3px;padding:6px 12px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:20px;font-size:13px;text-decoration:line-through;opacity:0.7">'+
+              m.name+'</span>';
+          });
+          h+='<div style="font-size:11px;color:#999;margin-top:4px">Override: '+
+            '<select onchange="addAssign(\''+id+'\',\''+ins+'\',this.value);this.value=\'\'" style="width:auto;display:inline;padding:4px;font-size:12px;margin:0 0 0 4px">'+
+            '<option value="">assign anyway...</option>';
+          unavailMembers.forEach(function(m){
+            h+='<option value="'+m.id+'">'+m.name+'</option>';
+          });
+          h+='</select></div>';
+          h+='</div>';
+        }
+        
+        if(!availMembers.length&&!unavailMembers.length){
+          h+='<div style="font-size:12px;color:#999;padding:6px">No members play '+ins+'</div>';
+        }
+        
+        h+='</div>'; // end instrument block
+      });
+      
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px">'+
+        '<button onclick="editSvcSongs(\''+id+'\')">🎵 Assign Songs</button>'+
+        '<button class="sec" onclick="showHome()"><- Back</button></div></div>';
+      render(h);
+    });
+  });
+}
+function addAssign(sid,ins,memberId){
+  if(!memberId) return;
+  // Save assignment + pending RSVP status
+  Promise.all([
+    ref.child("services/"+sid+"/slots/"+ins+"/"+memberId).set(true),
+    ref.child("services/"+sid+"/rsvp/"+memberId).set("pending")
+  ]).then(function(){
+    logActivity("member_assigned","Assigned to service ("+ins+")");
+    // Send email notification to the member
+    sendAssignmentEmail(sid, ins, memberId);
+    setTimeout(function(){editSvc(sid);},400);
+  });
+}
+function delAssign(sid,ins,memberId){
+  logActivity("member_removed","Removed "+ins+" from service "+sid);
+  ref.child("services/"+sid+"/slots/"+ins+"/"+memberId).remove();
+  ref.child("services/"+sid+"/rsvp/"+memberId).remove().then(function(){editSvc(sid);});
+}
+
+// -- Send assignment email to member --
+function sendAssignmentEmail(sid, ins, memberId){
+  Promise.all([
+    ref.child("services/"+sid).once("value"),
+    ref.child("users").once("value"),
+    ref.child("settings/emailjs").once("value")
+  ]).then(function(res){
+    var svc    = res[0].val(); if(!svc) return;
+    var users  = res[1].val()||{};
+    var ejsCfg = res[2].val()||{};
+
+    if(!ejsCfg.publicKey||!ejsCfg.serviceId||!ejsCfg.templateIdMember){
+      console.log("EmailJS not configured - skipping email");
+      return;
+    }
+
+    var member = users[memberId]; if(!member||!member.email) return;
+
+    // Build full team list for email
+    var teamLines=[];
+    for(var i in (svc.slots||{})){
+      for(var uid in svc.slots[i]){
+        teamLines.push(i+": "+(users[uid]?users[uid].name:"?"));
+      }
+    }
+
+    // Find admin email
+    var adminEmail="";
+    for(var k in users){ if(users[k].role==="admin"){adminEmail=users[k].email;break;} }
+
+    // Build app URL for RSVP links
+    var appUrl = window.location.href.split("?")[0];
+    var acceptUrl = appUrl+"?rsvp=accept&sid="+sid+"&uid="+memberId;
+    var denyUrl   = appUrl+"?rsvp=deny&sid="+sid+"&uid="+memberId;
+
+    initEmailJS(ejsCfg.publicKey);
+
+    emailjs.send(ejsCfg.serviceId, ejsCfg.templateIdMember, {
+      to_email:   member.email,
+      to_name:    member.name,
+      instrument: ins,
+      svc_name:   svc.name,
+      svc_date:   svc.date,
+      svc_time:   svc.time,
+      team_list:  teamLines.join("\n"),
+      accept_url: acceptUrl,
+      deny_url:   denyUrl,
+      admin_email:adminEmail
+    }).then(function(){
+      console.log("✅ Assignment email sent to "+member.name);
+    }).catch(function(e){
+      console.error("Email error:",e);
+    });
+  });
+}
+
+// -- Handle RSVP links (Accept/Deny from email) --
+function checkRsvpFromUrl(){
+  var params = new URLSearchParams(window.location.search);
+  var rsvp = params.get("rsvp");
+  var sid  = params.get("sid");
+  var muid = params.get("uid");
+  if(!rsvp||!sid||!muid) return;
+
+  // Clean URL
+  window.history.replaceState({},document.title,window.location.pathname);
+
+  var status = (rsvp==="accept") ? "accepted" : "denied";
+
+  Promise.all([
+    ref.child("services/"+sid).once("value"),
+    ref.child("users").once("value"),
+    ref.child("settings/emailjs").once("value")
+  ]).then(function(res){
+    var svc    = res[0].val(); if(!svc) return;
+    var users  = res[1].val()||{};
+    var ejsCfg = res[2].val()||{};
+    var member = users[muid];   if(!member) return;
+
+    // Save RSVP status to Firebase
+    ref.child("services/"+sid+"/rsvp/"+muid).set(status).then(function(){
+      // Show confirmation in app
+      var msg = status==="accepted"
+        ? "✅ You've ACCEPTED the service!\n\n"+svc.name+"\n"+svc.date+" at "+svc.time
+        : "x You've DECLINED the service.\n\n"+svc.name+"\n"+svc.date+" at "+svc.time+"\n\nAdmin has been notified.";
+      alert(msg);
+
+      // Send RSVP summary email to admin
+      if(ejsCfg.publicKey&&ejsCfg.serviceId&&ejsCfg.templateIdAdmin){
+        var adminEmail="";
+        for(var k in users){ if(users[k].role==="admin"){adminEmail=users[k].email;break;} }
+        if(!adminEmail) return;
+
+        // Build full RSVP status list
+        var rsvpData = svc.rsvp||{};
+        rsvpData[muid] = status; // include current response
+        var accepted=[], denied=[], pending=[];
+        for(var ins in (svc.slots||{})){
+          for(var uid in svc.slots[ins]){
+            var u=users[uid]; if(!u) continue;
+            var st=rsvpData[uid]||"pending";
+            var line=u.name+" ("+ins+")";
+            if(st==="accepted") accepted.push(line);
+            else if(st==="denied") denied.push(line);
+            else pending.push(line);
+          }
+        }
+
+        initEmailJS(ejsCfg.publicKey);
+        emailjs.send(ejsCfg.serviceId, ejsCfg.templateIdAdmin, {
+          to_email:      adminEmail,
+          member_name:   member.name,
+          rsvp_status:   status.toUpperCase(),
+          svc_name:      svc.name,
+          svc_date:      svc.date,
+          svc_time:      svc.time,
+          accepted_list: accepted.length ? accepted.join("\n") : "None yet",
+          denied_list:   denied.length   ? denied.join("\n")   : "None",
+          pending_list:  pending.length  ? pending.join("\n")  : "None"
+        }).catch(function(e){ console.error("Admin email error:",e); });
+      }
+    });
+  });
+}
+
+// -- Settings tab (admin only) --
+function showSettings(){
+  setNav(adminTabs());
+
+  // Load both email config and instruments together
+  Promise.all([
+    ref.child("settings/emailjs").once("value"),
+    ref.child("settings/instruments").once("value")
+  ]).then(function(res){
+    var cfg  = res[0].val()||{};
+    var inst = res[1].val()&&Array.isArray(res[1].val()) ? res[1].val() : INST;
+
+    var h='<h2>⚙️ Settings</h2>';
+
+    /* -- Instruments & Roles -- */
+    h+='<div class="card">'+
+      '<h3>🎸 Instruments & Roles</h3>'+
+      '<p style="color:#999;font-size:13px;margin-top:0">These appear when members pick their role and when admin assigns the team.</p>'+
+      '<div id="inst-list">';
+
+    inst.forEach(function(name, i){
+      h+='<div style="display:flex;align-items:center;gap:8px;margin:6px 0">'+
+        '<input value="'+name+'" id="inst-'+i+'" style="flex:1;margin:0">'+
+        '<button onclick="removeInst('+i+')" style="width:36px;height:36px;padding:0;margin:0;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:6px;flex-shrink:0">✕</button>'+
+        '</div>';
+    });
+
+    h+='</div>'+
+      '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px">'+
+      '<input id="new-inst" placeholder="Add new instrument or role..." style="margin:0">'+
+      '<button onclick="addInstField()" style="width:auto;padding:10px 16px;margin:0">+ Add</button>'+
+      '</div>'+
+      '<button onclick="saveInstruments()" style="margin-top:12px;background:#28a745">💾 Save Instruments & Roles</button>'+
+      '<div id="inst-msg" style="margin-top:8px"></div>'+
+      '</div>';
+
+    /* -- Reminder Schedule -- */
+    ref.child("settings/reminder").once("value").then(function(rSnap){
+      var rs = rSnap.val() || { days:["monday","friday"], hourPST:8, minutePST:0 };
+      var selDays = rs.days || ["monday","friday"];
+      var DAYS = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+      var HOURS = [];
+      for(var hh=0;hh<24;hh++){
+        var ap=hh>=12?"PM":"AM", h12=hh>12?hh-12:(hh||12);
+        HOURS.push({val:hh, label:h12+":00 "+ap});
+      }
+
+      var rh = '<div class="card">'+
+        '<h3 style="margin-top:0">🔔 Reminder Schedule</h3>'+
+        '<p style="color:#999;font-size:13px;margin-top:0">'+
+        'Reminder emails are sent to members with pending RSVP on the days and time you choose (PST). '+
+        'Reminders stop automatically once a member accepts or declines, or is removed from the service.'+
+        '</p>'+
+
+        '<label>Send reminders on</label>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">';
+
+      DAYS.forEach(function(d){
+        var on = selDays.indexOf(d)>=0;
+        rh+='<span class="chip'+(on?" on":"")+'" id="rday-'+d+'" onclick="tglRDay(\''+d+'\')" '+
+          'style="text-transform:capitalize">'+d+'</span>';
+      });
+
+      rh+='</div>'+
+        '<label>Send at (PST timezone)</label>'+
+        '<select id="r-hour" style="margin-bottom:8px">';
+      HOURS.forEach(function(o){
+        rh+='<option value="'+o.val+'"'+(rs.hourPST===o.val?" selected":"")+'>'+o.label+'</option>';
+      });
+      rh+='</select>'+
+        '<button onclick="saveReminderSchedule()" style="background:#28a745">💾 Save Reminder Schedule</button>'+
+        '<div id="remind-msg" style="margin-top:8px"></div>';
+
+      // Show last run info
+      ref.child("settings/reminderLastRun").once("value").then(function(lrSnap){
+        var lr = lrSnap.val();
+        if(lr&&lr.timestamp){
+          var dt = new Date(lr.timestamp).toLocaleString();
+          rh+='<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:6px;font-size:12px;color:#999">'+
+            '🕐 Last run: <b>'+dt+'</b> &nbsp;|&nbsp; Sent: <b>'+lr.sent+'</b> &nbsp;|&nbsp; Already responded: <b>'+lr.skipped+'</b>'+
+            '</div>';
+        }
+        rh+='</div>';
+
+        // Insert reminder section before email section
+        var emailSection = document.getElementById("email-section");
+        if(emailSection){
+          emailSection.insertAdjacentHTML("beforebegin", rh);
+        }
+        // Store selected days globally
+        window._reminderDays = selDays.slice();
+      });
+    });
+
+    /* -- EmailJS -- */
+    h+='<div class="card" id="email-section">'+
+      '<h3>📧 Email Notifications (EmailJS)</h3>'+
+      '<div style="background:#fff3e0;padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px">'+
+      '<b>Setup steps:</b><br>'+
+      '1. Go to <a href="https://www.emailjs.com" target="_blank">emailjs.com</a> -> free account<br>'+
+      '2. Add Email Service (Gmail/Outlook) -> copy <b>Service ID</b><br>'+
+      '3. Create <b>two templates</b> (see below) -> copy Template IDs<br>'+
+      '4. Go to Account -> copy <b>Public Key</b><br>'+
+      '5. Paste all below and click Save'+
+      '</div>'+
+      '<label>EmailJS Public Key</label>'+
+      '<input id="ejs-pub" placeholder="e.g. user_xxxxxxxxxxxxxxx" value="'+(cfg.publicKey||"")+'">'+
+      '<label>Service ID</label>'+
+      '<input id="ejs-svc" placeholder="e.g. service_xxxxxxx" value="'+(cfg.serviceId||"")+'">'+
+      '<label>Template ID - Member Notification</label>'+
+      '<input id="ejs-tm" placeholder="e.g. template_member01" value="'+(cfg.templateIdMember||"")+'">'+
+      '<div style="font-size:11px;color:#999;margin:-4px 0 8px">'+
+      'Variables: {{to_name}}, {{to_email}}, {{instrument}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{team_list}}, {{accept_url}}, {{deny_url}}'+
+      '</div>'+
+      '<label>Template ID - Admin RSVP Summary</label>'+
+      '<input id="ejs-ta" placeholder="e.g. template_admin01" value="'+(cfg.templateIdAdmin||"")+'">'+
+      '<div style="font-size:11px;color:#999;margin:-4px 0 8px">'+
+      'Variables: {{member_name}}, {{rsvp_status}}, {{svc_name}}, {{svc_date}}, {{svc_time}}, {{accepted_list}}, {{denied_list}}, {{pending_list}}'+
+      '</div>'+
+
+      '<div style="background:#e8f5e9;padding:10px;border-radius:6px;margin:8px 0;font-size:13px">'+
+      '✅ <b>Reminder emails reuse the Member Notification template</b> - no extra template needed! '+
+      'A <code>{{is_reminder}}</code> variable is passed so your template can show "REMINDER:" in the subject.'+
+      '</div>'+
+
+      '<label>App URL (for RSVP links in reminder emails)</label>'+
+      '<input id="ejs-url" placeholder="e.g. https://yourname.github.io/worship-scheduler" value="'+(cfg.appUrl||window.location.href.split("?")[0])+'">'+
+
+      '<button onclick="saveEmailSettings()" style="margin-top:12px">Save Email Settings</button>'+
+      '<div id="settings-msg" style="margin-top:8px"></div>'+
+      '</div>'+
+
+      '<div class="card" id="template-examples-section">'+
+      '<h3>📋 Email Template Examples</h3>'+
+      '<details><summary style="cursor:pointer;color:var(--accent)">Member Notification Template</summary>'+
+      '<pre style="font-size:11px;white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:4px;margin-top:8px">'+
+      'Subject: You\'ve been assigned to {{svc_name}}\n\n'+
+      'Hi {{to_name}},\n\n'+
+      'You have been assigned as {{instrument}} for:\n\n'+
+      '📅 Service: {{svc_name}}\n'+
+      '📆 Date: {{svc_date}}\n'+
+      '⏰ Time: {{svc_time}}\n\n'+
+      '👥 Full Team:\n{{team_list}}\n\n'+
+      'Please respond:\n'+
+      '✅ ACCEPT: {{accept_url}}\n'+
+      'x DECLINE: {{deny_url}}\n\n'+
+      'God bless,\nWorship Team Admin'+
+      '</pre></details>'+
+      '<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent)">Admin RSVP Summary Template</summary>'+
+      '<pre style="font-size:11px;white-space:pre-wrap;background:var(--bg);padding:12px;border-radius:4px;margin-top:8px">'+
+      'Subject: RSVP Update: {{member_name}} {{rsvp_status}}\n\n'+
+      '{{member_name}} has {{rsvp_status}} for {{svc_name}} on {{svc_date}}.\n\n'+
+      '✅ Accepted:\n{{accepted_list}}\n\n'+
+      'x Declined:\n{{denied_list}}\n\n'+
+      '... Pending:\n{{pending_list}}'+
+      '</pre></details>'+
+      '<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent)">💡 How to handle reminders with only 2 templates</summary>'+
+      '<div style="background:var(--bg);padding:12px;border-radius:4px;margin-top:8px;font-size:12px">'+
+      '<b>The Member Notification template is reused for reminders.</b><br><br>'+
+      'The variable <code>{{is_reminder}}</code> is passed as <b>Yes</b> for reminders and blank for first assignments.<br><br>'+
+      'In EmailJS you can use conditional subject lines like:<br>'+
+      '<code>{{#is_reminder}}⏰ REMINDER: {{/is_reminder}}You\'ve been assigned to {{svc_name}}</code><br><br>'+
+      'Or simply use a subject like:<br>'+
+      '<code>Worship Assignment - {{svc_name}} on {{svc_date}}</code><br>'+
+      'which works for both first notification and reminders.'+
+      '</div></details>'+
+      '</div>';
+
+    render(h);
+    // store current list in JS for remove/add operations
+    window._currentInst = inst.slice();
+  });
+}
+
+function addInstField(){
+  var val=(document.getElementById("new-inst").value||"").trim();
+  if(!val) return;
+  window._currentInst = getCurrentInstList();
+  if(window._currentInst.indexOf(val)>=0){
+    alert("\""+val+"\" already exists"); return;
+  }
+  window._currentInst.push(val);
+  document.getElementById("new-inst").value="";
+  rebuildInstList();
+}
+
+function removeInst(i){
+  window._currentInst = getCurrentInstList();
+  var name = window._currentInst[i];
+  if(!confirm('Remove "'+name+'"?\n\nNote: members already assigned this role keep it in their profile until they update it.')) return;
+  window._currentInst.splice(i,1);
+  rebuildInstList();
+}
+
+function getCurrentInstList(){
+  var list=[];
+  var rows=document.querySelectorAll("#inst-list input");
+  rows.forEach(function(el){ var v=(el.value||"").trim(); if(v) list.push(v); });
+  return list;
+}
+
+function rebuildInstList(){
+  var inst=window._currentInst;
+  var html="";
+  inst.forEach(function(name,i){
+    html+='<div style="display:flex;align-items:center;gap:8px;margin:6px 0">'+
+      '<input value="'+name+'" id="inst-'+i+'" style="flex:1;margin:0">'+
+      '<button onclick="removeInst('+i+')" style="width:36px;height:36px;padding:0;margin:0;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:6px;flex-shrink:0">✕</button>'+
+      '</div>';
+  });
+  document.getElementById("inst-list").innerHTML=html;
+}
+
+function saveInstruments(){
+  var list=getCurrentInstList();
+  if(!list.length){ alert("Add at least one instrument"); return; }
+  var msg=document.getElementById("inst-msg");
+  msg.innerHTML='<div class="msg-info">... Saving...</div>';
+  ref.child("settings/instruments").set(list).then(function(){
+    INST=list; // update live in this session
+    msg.innerHTML='<div class="msg-ok">✅ Saved! Members will see updated list on next login.</div>';
+  }).catch(function(e){
+    msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
+  });
+}
+
+
+function saveEmailSettings(){
+  var pub = (document.getElementById("ejs-pub").value||"").trim();
+  var svc = (document.getElementById("ejs-svc").value||"").trim();
+  var tm  = (document.getElementById("ejs-tm").value||"").trim();
+  var ta  = (document.getElementById("ejs-ta").value||"").trim();
+  var url = (document.getElementById("ejs-url").value||"").trim();
+  var msg = document.getElementById("settings-msg");
+
+  if(!pub||!svc||!tm||!ta){
+    msg.innerHTML='<div class="msg-err">x Fill Public Key, Service ID and both Template IDs</div>'; return;
+  }
+  msg.innerHTML='<div class="msg-info">... Saving...</div>';
+
+  ref.child("settings/emailjs").set({
+    publicKey:pub, serviceId:svc,
+    templateIdMember:tm, templateIdAdmin:ta,
+    appUrl:url
+  }).then(function(){
+    initEmailJS(pub);
+    msg.innerHTML='<div class="msg-ok">✅ Email settings saved!</div>';
+  }).catch(function(e){
+    msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
+  });
+}
+
+function tglRDay(d){
+  window._reminderDays = window._reminderDays||["monday","friday"];
+  var i = window._reminderDays.indexOf(d);
+  if(i>=0) window._reminderDays.splice(i,1);
+  else window._reminderDays.push(d);
+  // Update chip appearance
+  var chip = document.getElementById("rday-"+d);
+  if(chip) chip.className = "chip"+(window._reminderDays.indexOf(d)>=0?" on":"");
+}
+
+function saveReminderSchedule(){
+  var days = window._reminderDays||[];
+  var hourEl = document.getElementById("r-hour");
+  var hour   = hourEl ? parseInt(hourEl.value,10) : 8;
+  var msg    = document.getElementById("remind-msg");
+
+  if(!days.length){
+    msg.innerHTML='<div class="msg-err">x Select at least one day</div>'; return;
+  }
+  msg.innerHTML='<div class="msg-info">... Saving...</div>';
+
+  ref.child("settings/reminder").set({
+    days:    days,
+    hourPST: hour,
+    minutePST: 0
+  }).then(function(){
+    var dayLabels = days.map(function(d){return d.charAt(0).toUpperCase()+d.slice(1);}).join(", ");
+    var h12  = hour>12?hour-12:(hour||12);
+    var ampm = hour>=12?"PM":"AM";
+    msg.innerHTML='<div class="msg-ok">✅ Reminders set for <b>'+dayLabels+'</b> at <b>'+h12+':00 '+ampm+' PST</b></div>';
+  }).catch(function(e){
+    msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
+  });
+}
+
+function editSvcSongs(sid){
+  setNav(adminTabs());
+  render('<div class="card">Loading...</div>');
+  Promise.all([
+    ref.child("services/"+sid).once("value"),
+    ref.child("songs").once("value"),
+    ref.child("svcFiles/"+sid).once("value")
+  ]).then(function(res){
+    var ss=res[0]; var songSnap=res[1]; var filesSnap=res[2];
+    {
+    var s=ss.val(); if(!s) return showHome();
+    {
+      var allSongs = songSnap.val()||{};
+      var assignedSongs = s.songs||{};
+      var fileData = filesSnap.val()||{};
+      var svcPdfs = fileData.pdfs||{};
+      var combinedPdf = fileData.combinedPdf||null;
+
+      var h='<div class="card"><h2>🎵 Songs & Files — '+s.name+'</h2>'+
+        '<small style="color:#999">'+s.date+' at '+s.time+'</small>';
+
+      /* ── Assigned Songs from Library ── */
+      h+='<div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px">'+
+        '<label style="margin:0"><b>🎵 Songs from Library</b></label>';
+      var hasSongs=false;
+      for(var sk in assignedSongs){
+        hasSongs=true;
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;'+
+          'background:var(--accent);color:#fff;padding:8px 12px;border-radius:6px;margin:6px 0;font-size:13px">'+
+          '<span>🎵 '+assignedSongs[sk]+'</span>'+
+          '<button class="sec" style="width:60px;padding:4px;margin:0;font-size:11px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid #fff" '+
+          'onclick="removeSvcSong(\''+sid+'\',\''+sk+'\')">Remove</button></div>';
+      }
+      if(!hasSongs) h+='<div style="color:#999;font-size:12px;padding:6px">No songs added yet</div>';
+
+      // Add from library dropdown
+      var libKeys=Object.keys(allSongs);
+      if(libKeys.length){
+        h+='<select onchange="addSvcSong(\''+sid+'\',this.value,this.options[this.selectedIndex].text);this.value=\'\'" style="margin-top:8px">'+
+          '<option value="">+ Add from song library...</option>';
+        libKeys.forEach(function(k){
+          if(!assignedSongs[k]) h+='<option value="'+k+'">'+allSongs[k].title+' ('+allSongs[k].key+')</option>';
+        });
+        h+='</select>';
+      }
+      h+='</div>';
+
+      /* ── PDF Files ── */
+      h+='<div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px">'+
+        '<label style="margin:0"><b>📄 PDF Files (Chords / Numbers / Lyrics)</b></label>'+
+        '<p style="font-size:12px;color:#999;margin:4px 0 10px">Upload multiple PDFs. Team members can view each file and the combined PDF.</p>';
+
+      // Existing uploaded PDFs
+      var pdfKeys=Object.keys(svcPdfs);
+      if(pdfKeys.length){
+        pdfKeys.forEach(function(pk){
+          var pdf=svcPdfs[pk];
+          h+='<div style="display:flex;justify-content:space-between;align-items:center;'+
+            'background:var(--card);border:1px solid var(--line);padding:8px 12px;border-radius:6px;margin:4px 0">'+
+            '<div>'+
+              '<span style="font-size:13px">📄 '+pdf.name+'</span>'+
+              '<span style="font-size:11px;color:#999;margin-left:8px">'+Math.round(pdf.size/1024)+' KB</span>'+
+            '</div>'+
+            '<div style="display:flex;gap:6px">'+
+              '<button onclick="viewPdf(\''+sid+'\',\''+pk+'\')" style="width:auto;padding:4px 8px;margin:0;font-size:11px;background:var(--accent);color:#fff;border-radius:4px;border:none;cursor:pointer">View</button>'+
+              '<button onclick="removeSvcPdf(\''+sid+'\',\''+pk+'\')" style="width:auto;padding:4px 8px;margin:0;font-size:11px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:4px">✕ Remove</button>'+
+            '</div></div>';
+        });
+      } else {
+        h+='<div style="color:#999;font-size:12px;padding:6px">No PDFs uploaded yet</div>';
+      }
+
+      // Upload button
+      h+='<div style="margin-top:10px">'+
+        '<input type="file" id="svc-pdf-upload" accept=".pdf" multiple '+
+          'onchange="uploadSvcPdfs(\''+sid+'\')" style="margin:0">'+
+        '<div id="pdf-upload-status" style="font-size:12px;color:#999;margin-top:4px"></div>'+
+        '</div>';
+
+      // Combined PDF section
+      h+='<div style="margin-top:14px;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:6px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
+        '<div>'+
+          '<b style="font-size:13px">📦 Combined PDF</b>'+
+          '<div style="font-size:11px;color:#999;margin-top:2px">Merge all uploaded PDFs into one file for easy sharing</div>'+
+        '</div>';
+
+      if(combinedPdf){
+        h+='<button onclick="viewPdf(\''+sid+'\',\'combined\')" style="width:auto;padding:6px 14px;background:#28a745;color:#fff;border-radius:6px;border:none;cursor:pointer;font-size:13px;margin-left:8px">📥 View Combined</button>';
+      }
+
+      h+='</div>'+
+        (pdfKeys.length>0
+          ? '<button onclick="combineSvcPdfs(\''+sid+'\')" style="margin-top:10px;background:#5c6bc0">'+
+            '🔗 Combine All PDFs into One</button>'+
+            '<div id="combine-status" style="font-size:12px;margin-top:6px"></div>'
+          : '<div style="font-size:12px;color:#999;margin-top:8px">Upload PDFs above to enable combining</div>'
+        )+
+        '</div>';
+      h+='</div>';
+
+      /* ── Back buttons ── */
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px">'+
+        '<button onclick="editSvc(\''+sid+'\')">← Team</button>'+
+        '<button class="sec" onclick="showHome()">← Back</button></div></div>';
+
+      render(h);
+    }
+    }
+  });
+}
+
+function addSvcSong(sid,songId,title){
+  if(!songId) return;
+  ref.child("services/"+sid+"/songs/"+songId).set(title.split(' (')[0]).then(function(){editSvcSongs(sid);});
+}
+function removeSvcSong(sid,songId){
+  ref.child("services/"+sid+"/songs/"+songId).remove().then(function(){editSvcSongs(sid);});
+}
+
+// ── Open a PDF stored in Firebase ──
+function viewPdf(sid, pdfId){
+  // Show loading indicator on the button that was clicked
+  var btn = event && event.target;
+  var origText = btn ? btn.textContent : "";
+  if(btn) btn.textContent = "⏳ Loading...";
+
+  ref.child("svcPdfData/"+sid+"/"+pdfId).once("value").then(function(snap){
+    if(btn) btn.textContent = origText;
+
+    var dataUrl = snap.val();
+    if(!dataUrl){
+      alert("PDF not found. It may have been removed.");
+      return;
+    }
+
+    try{
+      // Convert base64 data URL → Blob → Blob URL (no popup blocker issues)
+      var base64 = dataUrl.split(",")[1];
+      if(!base64){ alert("Invalid PDF data."); return; }
+
+      var binary  = atob(base64);
+      var bytes   = new Uint8Array(binary.length);
+      for(var i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      var blob    = new Blob([bytes], {type:"application/pdf"});
+      var blobUrl = URL.createObjectURL(blob);
+
+      // Try opening in new tab
+      var opened = window.open(blobUrl, "_blank");
+
+      if(!opened){
+        // Popup blocked — trigger download instead
+        var a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = (pdfId === "combined" ? "Combined-Service.pdf" : "Service.pdf");
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Small delay then revoke blob
+        setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 5000);
+      } else {
+        // Revoke after tab has loaded
+        setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 10000);
+      }
+    }catch(e){
+      if(btn) btn.textContent = origText;
+      alert("Error opening PDF: "+e.message);
+    }
+  }).catch(function(e){
+    if(btn) btn.textContent = origText;
+    alert("Error loading PDF: "+e.message);
+  });
+}
+
+// ── Upload multiple PDFs ──
+// PDFs stored under: svcFiles/{sid}/pdfs/{id}  (metadata only — name, size, url)
+// Actual binary stored under: svcPdfData/{sid}/{id}  (large base64 kept separate)
+function uploadSvcPdfs(sid){
+  var input = document.getElementById("svc-pdf-upload");
+  var files = Array.from(input.files);
+  if(!files.length) return;
+  var status = document.getElementById("pdf-upload-status");
+  status.innerHTML='<span style="color:#e65100">⏳ Uploading '+files.length+' file(s)... please wait</span>';
+
+  var done=0;
+  var errors=[];
+
+  files.forEach(function(file){
+    if(file.size > 8*1024*1024){
+      errors.push(file.name+" too large (max 8MB)");
+      done++;
+      checkDone();
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var id = "pdf_"+Math.random().toString(36).substr(2,9);
+      var dataUrl = e.target.result;
+      // Store binary data in separate path to keep services node small
+      ref.child("svcPdfData/"+sid+"/"+id).set(dataUrl, function(err){
+        if(err){
+          errors.push(file.name+": "+err.message);
+        } else {
+          // Store only metadata in the svcFiles path
+          ref.child("svcFiles/"+sid+"/pdfs/"+id).set({
+            name: file.name,
+            size: file.size,
+            url:  "#pdf:"+sid+":"+id,  // internal reference
+            uploadedAt: Date.now()
+          });
+        }
+        done++;
+        checkDone();
+      });
+    };
+    reader.onerror = function(){
+      errors.push("Failed to read "+file.name);
+      done++;
+      checkDone();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  function checkDone(){
+    if(done < files.length) return;
+    if(errors.length){
+      status.innerHTML='<span style="color:#c62828">❌ Errors: '+errors.join(", ")+'</span>';
+    } else {
+      status.innerHTML='<span style="color:#28a745">✅ '+files.length+' file(s) uploaded</span>';
+    }
+    // Clear combined PDF since files changed
+    ref.child("svcFiles/"+sid+"/combinedPdf").remove();
+    ref.child("svcPdfData/"+sid+"/combined").remove();
+    setTimeout(function(){ editSvcSongs(sid); }, 800);
+  }
+}
+
+function removeSvcPdf(sid, pdfId){
+  if(!confirm("Remove this PDF?")) return;
+  Promise.all([
+    ref.child("svcFiles/"+sid+"/pdfs/"+pdfId).remove(),
+    ref.child("svcPdfData/"+sid+"/"+pdfId).remove(),
+    ref.child("svcFiles/"+sid+"/combinedPdf").remove(),
+    ref.child("svcPdfData/"+sid+"/combined").remove()
+  ]).then(function(){ editSvcSongs(sid); });
+}
+
+// ── Load PDF data from separate storage path ──
+async function loadPdfData(sid, pdfId){
+  var snap = await ref.child("svcPdfData/"+sid+"/"+pdfId).once("value");
+  return snap.val();
+}
+
+// ── Combine all service PDFs into one using pdf-lib ──
+async function combineSvcPdfs(sid){
+  var statusEl = document.getElementById("combine-status");
+  statusEl.innerHTML='<span style="color:#e65100">⏳ Loading PDF files...</span>';
+
+  try {
+    if(typeof PDFLib === "undefined"){
+      statusEl.innerHTML='<span style="color:#c62828">❌ PDF library not loaded. Check internet connection.</span>';
+      return;
+    }
+
+    // Load metadata
+    var metaSnap = await ref.child("svcFiles/"+sid+"/pdfs").once("value");
+    var pdfMeta  = metaSnap.val();
+    if(!pdfMeta || !Object.keys(pdfMeta).length){
+      statusEl.innerHTML='<span style="color:#c62828">❌ No PDFs to combine. Upload files first.</span>';
+      return;
+    }
+
+    var pdfKeys = Object.keys(pdfMeta).sort(function(a,b){
+      return (pdfMeta[a].uploadedAt||0)-(pdfMeta[b].uploadedAt||0);
+    });
+
+    statusEl.innerHTML='<span style="color:#e65100">⏳ Merging '+pdfKeys.length+' PDFs...</span>';
+    var mergedPdf = await PDFLib.PDFDocument.create();
+    var totalPages=0;
+
+    for(var i=0; i<pdfKeys.length; i++){
+      var pk   = pdfKeys[i];
+      var meta = pdfMeta[pk];
+      statusEl.innerHTML='<span style="color:#e65100">⏳ Processing: '+meta.name+' ('+(i+1)+'/'+pdfKeys.length+')</span>';
+
+      // Load binary data from separate path
+      var dataUrl = await loadPdfData(sid, pk);
+      if(!dataUrl){ console.warn("No data for "+pk); continue; }
+
+      var base64 = dataUrl.split(',')[1];
+      var binary  = atob(base64);
+      var bytes   = new Uint8Array(binary.length);
+      for(var j=0; j<binary.length; j++) bytes[j]=binary.charCodeAt(j);
+
+      try{
+        var srcDoc = await PDFLib.PDFDocument.load(bytes.buffer);
+        var pages  = await mergedPdf.copyPages(srcDoc, srcDoc.getPageIndices());
+        pages.forEach(function(p){ mergedPdf.addPage(p); totalPages++; });
+      }catch(e2){
+        console.warn("Skipping "+meta.name+": "+e2.message);
+      }
+    }
+
+    if(totalPages===0){
+      statusEl.innerHTML='<span style="color:#c62828">❌ Could not read any PDF pages. Check files are valid PDFs.</span>';
+      return;
+    }
+
+    statusEl.innerHTML='<span style="color:#e65100">⏳ Saving combined PDF ('+totalPages+' pages)...</span>';
+    var mergedBytes  = await mergedPdf.save();
+    var mergedArr    = new Uint8Array(mergedBytes);
+    var mergedBin    = '';
+    for(var k2=0; k2<mergedArr.length; k2++) mergedBin+=String.fromCharCode(mergedArr[k2]);
+    var mergedB64    = 'data:application/pdf;base64,'+btoa(mergedBin);
+
+    // Store combined binary data separately
+    await ref.child("svcPdfData/"+sid+"/combined").set(mergedB64);
+    // Store metadata in svcFiles
+    await ref.child("svcFiles/"+sid+"/combinedPdf").set({
+      name:  "Combined-"+sid+".pdf",
+      size:  mergedArr.length,
+      pages: totalPages,
+      url:   "#pdf:"+sid+":combined",
+      createdAt: Date.now()
+    });
+
+    statusEl.innerHTML='<span style="color:#28a745">✅ Combined PDF ready ('+totalPages+' pages)! Team members can now view it.</span>';
+    setTimeout(function(){ editSvcSongs(sid); }, 1200);
+
+  }catch(e){
+    console.error("Combine error:", e);
+    statusEl.innerHTML='<span style="color:#c62828">❌ Error: '+e.message+'</span>';
+  }
+}
+
+/* ===== SONGS ===== */
+function showSongs(){
+  setNav(isAdmin()?adminTabs():memberTabs());
+  var h='<h2>Song Library</h2>';
+
+  if(isAdmin()){
+    h+=
+      '<div class="card">'+
+        '<h3 style="margin-top:0">🔍 Search Song Online</h3>'+
+        '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">'+
+          '<input id="sqry" placeholder="Song title + artist (e.g. Amazing Grace Chris Tomlin)">'+
+          '<button onclick="searchSongOnline()" style="width:auto;padding:10px 16px">Search</button>'+
+        '</div>'+
+        '<div id="search-result"></div>'+
+      '</div>'+
+
+      '<div class="card">'+
+        '<h3 style="margin-top:0">📁 Add Song with File Upload</h3>'+
+        '<p style="color:#999;font-size:13px;margin-top:0">Upload a PDF, image, or text file containing chords/lyrics</p>'+
+        '<input id="st" placeholder="Song Title">'+
+        '<label>Original Key</label>'+
+        '<select id="sk" onchange="onKeyChange(this)">'+
+          KEYS.map(function(k){return'<option>'+k+'</option>';}).join("")+
+        '</select>'+
+        '<input id="snt" placeholder="Notes / Tempo / BPM">'+
+
+        '<label>Chord File (PDF / image / txt)</label>'+
+        '<input type="file" id="chord-file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp" onchange="loadChordFile(this)">'+
+        '<div id="chord-file-preview" style="font-size:12px;color:#999;margin-top:4px"></div>'+
+
+        '<label>Lyrics File (PDF / image / txt) - or paste below</label>'+
+        '<input type="file" id="lyric-file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp" onchange="loadLyricFile(this)">'+
+        '<div id="lyric-file-preview" style="font-size:12px;color:#999;margin-top:4px"></div>'+
+
+        '<label>Chords <small style="font-weight:normal;color:#999">(auto-filled from file, or type here)</small></label>'+
+        '<textarea id="schords" rows="4" placeholder="e.g. G  D  Em  C" oninput="transposePreview()"></textarea>'+
+
+        '<label>Number Chart <small style="font-weight:normal;color:#999">(auto-generated when you pick a key)</small></label>'+
+        '<textarea id="snc" rows="3" placeholder="e.g. 1  5  6m  4"></textarea>'+
+
+        '<label>Lyrics <small style="font-weight:normal;color:#999">(auto-filled from file, or type here)</small></label>'+
+        '<textarea id="sly" rows="5" placeholder="Paste lyrics here..."></textarea>'+
+
+        '<button onclick="addSong()" style="margin-top:14px">+ Add to Library</button>'+
+      '</div>';
+  }
+
+  if(!fbReady){render(h);return;}
+
+  ref.child("songs").once("value").then(function(snap){
+    var songs=snap.val()||{};
+    if(!Object.keys(songs).length){
+      h+='<div class="card" style="text-align:center;color:#999;padding:30px">No songs yet.<br>'+(isAdmin()?'Search online or upload a file above.':'Songs will appear here once admin adds them.')+'</div>';
+    }
+    for(var k in songs){
+      var sg=songs[k];
+      h+='<div class="song" id="song-'+k+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:start">'+
+          '<b style="font-size:15px">'+sg.title+'</b>'+
+          (isAdmin()?'<button onclick="editSongKey(\''+k+'\')" style="width:auto;padding:4px 10px;margin:0;font-size:12px;background:var(--bg);color:var(--accent);border:1px solid var(--line);border-radius:6px">🎵 Transpose</button>':'')+
+        '</div>'+
+        '<small style="color:#999">Key: <b>'+sg.key+'</b>'+(sg.notes?' · '+sg.notes:'')+'</small>';
+
+      if(sg.chords) h+='<details><summary style="cursor:pointer;color:var(--accent)">🎸 Chords</summary>'+
+        '<pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+escHtml(sg.chords)+'</pre></details>';
+      if(sg.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent)">🔢 Number Chart</summary>'+
+        '<pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+escHtml(sg.numberChart)+'</pre></details>';
+      if(sg.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent)">📝 Lyrics</summary>'+
+        '<pre style="font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+escHtml(sg.lyrics)+'</pre></details>';
+      if(sg.chordFile) h+='<details><summary style="cursor:pointer;color:var(--accent)">📄 Chord File</summary>'+
+        '<div style="margin-top:6px">'+renderFilePreview(sg.chordFile, sg.chordFileType)+'</div></details>';
+      if(sg.lyricFile) h+='<details><summary style="cursor:pointer;color:var(--accent)">📄 Lyric File</summary>'+
+        '<div style="margin-top:6px">'+renderFilePreview(sg.lyricFile, sg.lyricFileType)+'</div></details>';
+
+      if(isAdmin()) h+='<button class="sec" style="margin-top:8px;font-size:12px" onclick="delSong(\''+k+'\')">Delete</button>';
+      h+='</div>';
+    }
+    render(h);
+  });
+}
+
+function renderFilePreview(dataUrl, fileType){
+  if(!dataUrl) return '';
+  if(fileType&&fileType.startsWith('image/')){
+    return '<img src="'+dataUrl+'" style="max-width:100%;border-radius:4px">';
+  }
+  if(fileType==='application/pdf'){
+    return '<embed src="'+dataUrl+'" type="application/pdf" width="100%" height="400px" style="border-radius:4px">';
+  }
+  // plain text stored as text content
+  return '<pre style="font-size:11px;white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+escHtml(dataUrl)+'</pre>';
+}
+
+// -- File loading --
+function loadChordFile(input){
+  var file = input.files[0];
+  if(!file) return;
+  var preview = document.getElementById("chord-file-preview");
+  preview.textContent = "Loading: "+file.name+" ("+Math.round(file.size/1024)+" KB)...";
+
+  if(file.type==="text/plain"){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var txt = e.target.result;
+      document.getElementById("schords").value = txt;
+      transposePreview();
+      preview.textContent = "✅ Loaded: "+file.name;
+      window._chordFileData = txt;
+      window._chordFileType = "text/plain";
+    };
+    reader.readAsText(file);
+  } else {
+    // PDF or image - store as base64
+    var reader = new FileReader();
+    reader.onload = function(e){
+      window._chordFileData = e.target.result;
+      window._chordFileType = file.type;
+      preview.innerHTML = file.type.startsWith("image/")
+        ? '✅ '+file.name+' - <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
+        : '✅ '+file.name+' (PDF - will be stored with song)';
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function loadLyricFile(input){
+  var file = input.files[0];
+  if(!file) return;
+  var preview = document.getElementById("lyric-file-preview");
+  preview.textContent = "Loading: "+file.name+"...";
+
+  if(file.type==="text/plain"){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var txt = e.target.result;
+      document.getElementById("sly").value = txt;
+      preview.textContent = "✅ Loaded: "+file.name;
+      window._lyricFileData = txt;
+      window._lyricFileType = "text/plain";
+    };
+    reader.readAsText(file);
+  } else {
+    var reader = new FileReader();
+    reader.onload = function(e){
+      window._lyricFileData = e.target.result;
+      window._lyricFileType = file.type;
+      preview.innerHTML = file.type.startsWith("image/")
+        ? '✅ '+file.name+' - <img src="'+e.target.result+'" style="max-height:80px;margin-top:4px;border-radius:4px">'
+        : '✅ '+file.name+' (PDF)';
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+// -- Key transposition --
+var CHROMATIC = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+var CHORD_NAMES = {
+  "C":0,"C#":1,"Db":1,"D":2,"D#":3,"Eb":3,"E":4,"F":5,
+  "F#":6,"Gb":6,"G":7,"G#":8,"Ab":8,"A":9,"A#":10,"Bb":10,"B":11
+};
+var NUM_TO_SEMITONE = [0,2,4,5,7,9,11]; // scale degrees 1-7
+
+function semitoneOf(key){
+  return CHORD_NAMES[key]!==undefined ? CHORD_NAMES[key] : 0;
+}
+
+function transposeChord(chord, semitones){
+  // Handles: G, Am, F#m, Bb, Cmaj7, D/F#, etc.
+  return chord.replace(/[A-G][b#]?/g, function(note, offset){
+    // Only transpose the first note or bass note
+    var s = CHORD_NAMES[note];
+    if(s===undefined) return note;
+    var newS = ((s + semitones) % 12 + 12) % 12;
+    return CHROMATIC[newS];
+  });
+}
+
+function transposeText(text, fromKey, toKey){
+  if(!text||fromKey===toKey) return text;
+  var semitones = ((semitoneOf(toKey) - semitoneOf(fromKey)) % 12 + 12) % 12;
+  // Match chord tokens: word-boundary chord names followed by optional suffix
+  return text.replace(/\b([A-G][b#]?)(m|maj|min|dim|aug|sus|add|2|4|5|6|7|9|11|13|maj7|m7|dim7|m7b5|\/[A-G][b#]?)*/g, function(match){
+    return transposeChord(match, semitones);
+  });
+}
+
+function buildNumberChart(chordText, key){
+  if(!chordText) return "";
+  var rootSemitone = semitoneOf(key);
+  var scale = NUM_TO_SEMITONE.map(function(s){ return (rootSemitone+s)%12; });
+
+  return chordText.replace(/\b([A-G][b#]?)(m|maj|min|dim|aug|sus|add|2|4|5|6|7|9|11|13|maj7|m7|dim7|m7b5|\/[A-G][b#]?)*/g, function(match, root, suffix){
+    var s = CHORD_NAMES[root];
+    if(s===undefined) return match;
+    var degree = scale.indexOf(s);
+    if(degree===-1) return match; // chromatic - leave as chord name
+    var num = degree+1;
+    var isMinor = suffix&&(suffix[0]==="m"||suffix.indexOf("min")===0);
+    return num+(isMinor?"m":"")+(suffix&&!isMinor?suffix:"");
+  });
+}
+
+function transposePreview(){
+  var key    = (document.getElementById("sk")||{}).value;
+  var chords = (document.getElementById("schords")||{}).value||"";
+  if(!key||!chords) return;
+
+  // Store original key when user first types chords
+  if(!window._originalKey){
+    window._originalKey = key;
+    window._originalChords = chords;
+  }
+
+  // Regenerate number chart from current chords + key
+  var nc = buildNumberChart(chords, key);
+  var ncEl = document.getElementById("snc");
+  if(ncEl && nc) ncEl.value = nc;
+}
+
+function transposeForm(fromKey, toKey){
+  // Transpose chords text to new key and regenerate number chart
+  var chordsEl = document.getElementById("schords");
+  if(!chordsEl) return;
+  var chords = chordsEl.value;
+  if(!chords||!fromKey||!toKey||fromKey===toKey) return;
+
+  var newChords = transposeText(chords, fromKey, toKey);
+  chordsEl.value = newChords;
+
+  var nc = buildNumberChart(newChords, toKey);
+  var ncEl = document.getElementById("snc");
+  if(ncEl) ncEl.value = nc;
+}
+
+// Called when key selector changes in the add form
+function onKeyChange(selectEl){
+  var newKey = selectEl.value;
+  if(window._lastFormKey && window._lastFormKey !== newKey){
+    transposeForm(window._lastFormKey, newKey);
+  }
+  window._lastFormKey = newKey;
+  transposePreview();
+}
+
+// -- Edit/Transpose existing song --
+function editSongKey(songId){
+  if(!fbReady) return;
+  ref.child("songs/"+songId).once("value").then(function(snap){
+    var sg = snap.val(); if(!sg) return;
+
+    var h='<div class="card">'+
+      '<h2>🎵 Transpose: '+sg.title+'</h2>'+
+      '<small style="color:#999">Current key: <b>'+sg.key+'</b></small>'+
+      '<label style="margin-top:16px">Transpose to new key</label>'+
+      '<select id="new-key">'+
+        KEYS.map(function(k){return'<option'+(k===sg.key?' selected':'')+'>'+k+'</option>';}).join("")+
+      '</select>'+
+      '<div id="transpose-preview" style="margin-top:14px"></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px">'+
+        '<button onclick="applyTranspose(\''+songId+'\',\''+sg.key+'\')" style="background:#28a745">✅ Save Transposed</button>'+
+        '<button class="sec" onclick="showSongs()">Cancel</button>'+
+      '</div>'+
+    '</div>';
+
+    render(h);
+    setNav(isAdmin()?adminTabs():memberTabs());
+
+    // Store original for preview
+    window._editSongData = sg;
+
+    // Live preview on key change
+    document.getElementById("new-key").addEventListener("change", function(){
+      showTransposePreview(sg);
+    });
+    showTransposePreview(sg);
+  });
+}
+
+function showTransposePreview(sg){
+  var newKey  = document.getElementById("new-key").value;
+  var fromKey = sg.key;
+  var box     = document.getElementById("transpose-preview");
+  if(!box) return;
+
+  if(newKey===fromKey){
+    box.innerHTML='<div style="color:#999;font-size:13px">Same key - no change</div>';
+    return;
+  }
+
+  var newChords = sg.chords ? transposeText(sg.chords, fromKey, newKey) : "";
+  var newNC     = newChords ? buildNumberChart(newChords, newKey) : "";
+
+  box.innerHTML=
+    '<div style="background:var(--bg);padding:12px;border-radius:8px">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+    '<div>'+
+      '<b style="font-size:12px;color:#999">ORIGINAL ('+fromKey+')</b>'+
+      (sg.chords?'<pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--card);padding:8px;border-radius:4px;margin-top:6px">'+escHtml(sg.chords)+'</pre>':'<div style="color:#999;font-size:12px;padding:8px">No chords</div>')+
+    '</div>'+
+    '<div>'+
+      '<b style="font-size:12px;color:var(--accent)">TRANSPOSED ('+newKey+')</b>'+
+      (newChords?'<pre style="font-size:11px;white-space:pre-wrap;max-height:150px;overflow:auto;background:var(--card);padding:8px;border-radius:4px;margin-top:6px">'+escHtml(newChords)+'</pre>':'<div style="color:#999;font-size:12px;padding:8px">No chords</div>')+
+    '</div>'+
+    '</div>'+
+    (newNC?'<div style="margin-top:10px"><b style="font-size:12px;color:#999">NUMBER CHART in '+newKey+'</b>'+
+      '<pre style="font-size:11px;white-space:pre-wrap;background:var(--card);padding:8px;border-radius:4px;margin-top:4px">'+escHtml(newNC)+'</pre></div>':'')+
+    '</div>';
+}
+
+function applyTranspose(songId, fromKey){
+  var newKey = document.getElementById("new-key").value;
+  if(!fbReady) return;
+
+  var sg = window._editSongData;
+  if(!sg) return;
+
+  var newChords = sg.chords ? transposeText(sg.chords, fromKey, newKey) : sg.chords;
+  var newNC     = newChords ? buildNumberChart(newChords, newKey) : sg.numberChart;
+
+  ref.child("songs/"+songId).update({
+    key:         newKey,
+    chords:      newChords||"",
+    numberChart: newNC||""
+  }).then(function(){
+    alert("✅ Transposed to "+newKey+" and saved!");
+    showSongs();
+  });
+}
+
+function addSong(){
+  var t=(document.getElementById("st").value||"").trim();
+  if(!t){alert("Enter song title");return;}
+  var key    = document.getElementById("sk").value;
+  var chords = document.getElementById("schords").value;
+  var nc     = document.getElementById("snc").value || buildNumberChart(chords, key);
+
+  var data = {
+    title:       t,
+    key:         key,
+    notes:       document.getElementById("snt").value,
+    chords:      chords,
+    numberChart: nc,
+    lyrics:      document.getElementById("sly").value
+  };
+
+  // Attach uploaded files if any
+  if(window._chordFileData){
+    data.chordFile     = window._chordFileData;
+    data.chordFileType = window._chordFileType;
+  }
+  if(window._lyricFileData){
+    data.lyricFile     = window._lyricFileData;
+    data.lyricFileType = window._lyricFileType;
+  }
+
+  var _stitle=(document.getElementById("st").value||"").trim();
+  logActivity("song_added","Added song: "+_stitle);
+  ref.child("songs/sg_"+Math.random().toString(36).substr(2,9)).set(data).then(function(){
+    // Reset file state
+    window._chordFileData = null;
+    window._chordFileType = null;
+    window._lyricFileData = null;
+    window._lyricFileType = null;
+    window._originalKey   = null;
+    window._lastFormKey   = null;
+    showSongs();
+  });
+}
+
+function delSong(id){
+  if(!confirm("Delete this song?")) return;
+  logActivity("song_deleted","Deleted song: "+id);
+  ref.child("songs/"+id).remove().then(showSongs);
+}
+
+function escJs(s){
+  return (s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+}
+
+/* ===== MY SERVICES (Member) ===== */
+function showMy(){
+  setNav(memberTabs());
+  render('<h2>Your Services</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+
+  var me=uid();
+
+  Promise.all([
+    ref.child("services").once("value"),
+    ref.child("users").once("value"),
+    ref.child("songs").once("value")
+  ]).then(function(results){
+    var svcs  = results[0].val()||{};
+    var users = results[1].val()||{};
+    var songs = results[2].val()||{};
+
+    var h='<h2>📅 Your Services</h2>';
+    var found=false;
+
+    var keys=Object.keys(svcs).sort(function(a,b){return svcs[a].date>svcs[b].date?1:-1;});
+
+    keys.forEach(function(k){
+      var s=svcs[k];
+      if(!s.slots) return;
+
+      var myInst=[];
+      for(var ins in s.slots){
+        if(s.slots[ins]&&s.slots[ins][me]) myInst.push(ins);
+      }
+      if(!myInst.length) return;
+
+      found=true;
+
+      // RSVP status
+      var rsvpStatus = (s.rsvp&&s.rsvp[me]) ? s.rsvp[me] : "pending";
+      var rsvpColor  = rsvpStatus==="accepted"?"#2e7d32":rsvpStatus==="denied"?"#c62828":"#e65100";
+      var rsvpLabel  = rsvpStatus==="accepted"?"✅ Accepted":rsvpStatus==="denied"?"❌ Declined":"⏳ Pending Response";
+
+      // Team list
+      var teamByInst={};
+      for(var ins in s.slots){
+        var pids=Object.keys(s.slots[ins]||{});
+        if(pids.length) teamByInst[ins]=pids.map(function(pid){return users[pid]?users[pid].name:"?";});
+      }
+
+      // Songs
+      var svcSongs=s.songs?Object.keys(s.songs).map(function(sk){
+        return {id:sk,title:s.songs[sk],data:songs[sk]};
+      }):[];
+
+      h+='<div class="card">';
+
+      // Header + RSVP badge
+      h+='<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px">'+
+        '<div>'+
+        '<b style="font-size:16px">'+s.name+'</b><br>'+
+        '<small style="color:#999">📅 '+s.date+' &nbsp; ⏰ '+s.time+'</small>'+
+        '</div>'+
+        '<span style="background:'+rsvpColor+';color:#fff;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:bold;white-space:nowrap">'+rsvpLabel+'</span>'+
+        '</div>';
+
+      // Instrument badge
+      h+='<div style="margin-bottom:10px">'+
+        myInst.map(function(i){return'<span style="display:inline-block;background:var(--accent);color:#fff;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:bold;margin-right:4px">'+i+'</span>';}).join('')+
+        '</div>';
+
+      // RSVP buttons if pending
+      if(rsvpStatus==="pending"){
+        h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;padding:12px;background:#fff3e0;border-radius:8px">'+
+          '<div style="grid-column:1/3;font-size:13px;font-weight:bold;color:#e65100;margin-bottom:4px">Please respond to this assignment:</div>'+
+          '<button onclick="rsvpService(\''+k+'\',\'accepted\')" style="background:#28a745;margin:0;padding:12px">✅ Accept</button>'+
+          '<button onclick="rsvpService(\''+k+'\',\'denied\')" style="background:#c23b22;margin:0;padding:12px">x Decline</button>'+
+          '</div>';
+      } else {
+        h+='<div style="margin:8px 0">'+
+          '<button class="sec" onclick="rsvpService(\''+k+'\',\''+(rsvpStatus==="accepted"?"denied":"accepted")+'\')" style="padding:8px;font-size:12px">'+
+          (rsvpStatus==="accepted"?"Change to ❌ Decline":"Change to ✅ Accept")+
+          '</button></div>';
+      }
+
+      // Songs
+      if(svcSongs.length){
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">🎵 Songs</b>';
+        svcSongs.forEach(function(sg){
+          h+='<div style="margin-top:10px;padding:10px;background:var(--card);border-radius:6px;border-left:3px solid var(--accent)">'+
+            '<b>'+sg.title+'</b>';
+          if(sg.data){
+            if(sg.data.key) h+='<span style="margin-left:10px;font-size:12px;color:#999">Key: <b>'+sg.data.key+'</b></span>';
+            if(sg.data.notes) h+='<span style="margin-left:10px;font-size:12px;color:#999">'+sg.data.notes+'</span>';
+            if(sg.data.chords) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">🎸 Chords</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.data.chords+'</pre></details>';
+            if(sg.data.numberChart) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">🔢 Number Chart</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.data.numberChart+'</pre></details>';
+            if(sg.data.lyrics) h+='<details><summary style="cursor:pointer;color:var(--accent);font-size:12px">📝 Lyrics</summary><pre style="font-size:11px;white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px">'+sg.data.lyrics+'</pre></details>';
+          }
+          h+='</div>';
+        });
+        h+='</div>';
+      }
+
+      // Team
+      var teamKeys=Object.keys(teamByInst);
+      if(teamKeys.length){
+        h+='<div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px">'+
+          '<b style="font-size:13px">👥 Team</b>';
+        teamKeys.forEach(function(ins){
+          h+='<div style="margin-top:6px;font-size:13px"><span style="color:#999;font-size:12px">'+ins+':</span> '+teamByInst[ins].join(", ")+'</div>';
+        });
+        h+='</div>';
+      }
+
+      h+='</div>';
+    });
+
+    if(!found) h='<h2>📅 Your Services</h2><div class="card" style="text-align:center;color:#999;padding:30px">No services assigned yet</div>';
+    render(h);
+  });
+}
+
+function rsvpService(sid, status){
+  var me=uid();
+  logActivity("rsvp_response","RSVP "+status+" for service "+sid);
+  ref.child("services/"+sid+"/rsvp/"+me).set(status).then(function(){
+    // Send RSVP notification to admin
+    Promise.all([
+      ref.child("services/"+sid).once("value"),
+      ref.child("users").once("value"),
+      ref.child("settings/emailjs").once("value")
+    ]).then(function(res){
+      var svc    = res[0].val()||{};
+      var users  = res[1].val()||{};
+      var ejsCfg = res[2].val()||{};
+      var member = users[me];
+
+      if(ejsCfg.publicKey&&ejsCfg.serviceId&&ejsCfg.templateIdAdmin&&member){
+        var adminEmail="";
+        for(var k in users){ if(users[k].role==="admin"){adminEmail=users[k].email;break;} }
+
+        if(adminEmail){
+          var rsvpData=svc.rsvp||{};
+          rsvpData[me]=status;
+          var accepted=[],denied=[],pending=[];
+          for(var ins in (svc.slots||{})){
+            for(var uid in svc.slots[ins]){
+              var u=users[uid]; if(!u) continue;
+              var st=rsvpData[uid]||"pending";
+              var line=u.name+" ("+ins+")";
+              if(st==="accepted") accepted.push(line);
+              else if(st==="denied") denied.push(line);
+              else pending.push(line);
+            }
+          }
+          initEmailJS(ejsCfg.publicKey);
+          emailjs.send(ejsCfg.serviceId, ejsCfg.templateIdAdmin,{
+            to_email:     adminEmail,
+            member_name:  member.name,
+            rsvp_status:  status.toUpperCase(),
+            svc_name:     svc.name,
+            svc_date:     svc.date,
+            svc_time:     svc.time,
+            accepted_list:accepted.length?accepted.join("\n"):"None yet",
+            denied_list:  denied.length?denied.join("\n"):"None",
+            pending_list: pending.length?pending.join("\n"):"None"
+          }).catch(function(e){console.error("RSVP email error:",e);});
+        }
+      }
+    });
+    showMy();
+  });
+}
+
+/* ===== AVAILABILITY (Member) ===== */
+function showAvail(){
+  setNav(memberTabs());
+  if(!fbReady){render('<div class="card">Loading...</div>');return;}
+  
+  ref.child("users/"+uid()+"/off").once("value").then(function(snap){
+    selDays=snap.val()||{};
+    renderCal();
+  });
+}
+function renderCal(){
+  var today=new Date(), year=today.getFullYear();
+  var MN=["January","February","March","April","May","June","July","August","September","October","November","December"];
+  var h='<h2>Off Days</h2><p style="color:#999;font-size:12px">Tap dates to mark unavailable</p>';
+  
+  for(var yr=year;yr<=year+1;yr++){
+    h+='<h3 style="text-align:center">'+yr+'</h3>';
+    for(var m=0;m<12;m++){
+      var dim=new Date(yr,m+1,0).getDate(), fd=new Date(yr,m,1).getDay();
+      h+='<div style="margin-bottom:16px"><div style="font-weight:bold;font-size:13px;margin-bottom:4px">'+MN[m]+'</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
+      ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(function(d){
+        h+='<div style="text-align:center;font-size:10px;font-weight:bold;color:#999">'+d+'</div>';
+      });
+      for(var e=0;e<fd;e++) h+='<div></div>';
+      for(var day=1;day<=dim;day++){
+        var ds=yr+'-'+String(m+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+        var isSel=!!selDays[ds];
+        var isToday=(yr===today.getFullYear()&&m===today.getMonth()&&day===today.getDate());
+        var style='cursor:pointer;padding:4px;text-align:center;border-radius:4px;border:'+
+          (isToday?'2px solid var(--accent)':'1px solid var(--line)')+
+          ';background:'+(isSel?'var(--accent)':'var(--bg)')+
+          ';color:'+(isSel?'#fff':'var(--ink)');
+        h+='<div style="'+style+'" onclick="tglDay(\''+ds+'\')">'+day+'</div>';
+      }
+      h+='</div></div>';
+    }
+  }
+  h+='<button onclick="saveOff()">Save Off Days</button>'+
+    '<button class="sec" onclick="clearOff()" style="margin-top:4px">Clear All</button>';
+  render(h);
+}
+function tglDay(ds){selDays[ds]?delete selDays[ds]:(selDays[ds]=true);renderCal();}
+function saveOff(){
+  ref.child("users/"+uid()+"/off").set(selDays).then(function(){alert("Saved!");showAvail();});
+}
+function clearOff(){
+  if(confirm("Clear all off days?")){ selDays={}; renderCal(); }
+}
+
+/* ===== CHAT ===== */
+function showChat(){
+  setNav(isAdmin()?adminTabs():memberTabs());
+  render(
+    '<div class="card"><h2>💬 Team Chat</h2>'+
+    '<div style="font-size:11px;color:#999;margin:-4px 0 8px">Tip: type @Name to mention someone</div>'+
+    '<div id="chatbox" style="border:1px solid var(--line);height:300px;overflow-y:auto;padding:10px;background:var(--bg);border-radius:6px;margin-bottom:10px">Loading...</div>'+
+    '<div id="mention-suggest" style="display:none;background:var(--card);border:1px solid var(--line);border-radius:6px;margin-bottom:6px;overflow:hidden"></div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<input id="cmsg" placeholder="Message... (Enter to send)" style="margin:0;flex:1" '+
+      'oninput="onChatInput(this)" onkeydown="onChatKey(event)">'+
+    '<button onclick="sendMsg()" style="width:80px;margin:0">Send</button>'+
+    '</div></div>'
+  );
+
+  if(!fbReady) return;
+
+  // Listen for new messages in real time
+  ref.child("messages").orderByChild("time").limitToLast(60).on("value",function(snap){
+    var box=document.getElementById("chatbox");
+    if(!box) return;
+    var msgs=[];
+    if(snap.val()){ for(var k in snap.val()) msgs.push(snap.val()[k]); }
+    msgs.sort(function(a,b){return (a.time||0)-(b.time||0);});
+
+    var me = uname();
+    box.innerHTML = msgs.map(function(m){
+      var isMine = m.name === me;
+      // Highlight @mentions of current user
+      var txt = m.text.replace(/@([\w ]+)/g, function(match, name){
+        var highlighted = name.trim().toLowerCase() === me.toLowerCase()
+          ? '<span style="background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px">@'+name+'</span>'
+          : '<span style="color:var(--accent);font-weight:bold">@'+name+'</span>';
+        return highlighted;
+      });
+
+      var align = isMine ? 'margin-left:auto;' : '';
+      var bg    = isMine ? 'background:var(--accent);color:#fff;' : 'background:var(--card);';
+      var nameColor = isMine ? 'color:rgba(255,255,255,0.8)' : 'color:#999';
+      var time  = new Date(m.time||0).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+
+      return '<div style="max-width:85%;'+align+'margin-bottom:8px">'+
+        '<div style="font-size:10px;'+nameColor+';margin-bottom:2px;'+(isMine?'text-align:right':'')+'">'+
+          (isMine ? time : '<b>'+m.name+'</b> · '+time)+
+        '</div>'+
+        '<div style="'+bg+'padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.4">'+txt+'</div>'+
+        '</div>';
+    }).join("");
+    box.scrollTop = box.scrollHeight;
+  });
+
+  // Mark chat notifications as read
+  var me = uid();
+  ref.child("users/"+me+"/notifications").once("value").then(function(snap){
+    var notifs = snap.val()||{};
+    for(var k in notifs){
+      if(notifs[k].type==="mention") ref.child("users/"+me+"/notifications/"+k).update({read:true});
+    }
+    updateNotificationBadge();
+  });
+}
+
+// ── Enter key sends message ──
+function onChatKey(e){
+  if(e.key==="Enter" && !e.shiftKey){
+    e.preventDefault();
+    sendMsg();
+  }
+}
+
+// ── @mention autocomplete ──
+function onChatInput(input){
+  var val = input.value;
+  var atIdx = val.lastIndexOf("@");
+  var suggest = document.getElementById("mention-suggest");
+  if(!suggest) return;
+
+  if(atIdx === -1){
+    suggest.style.display = "none";
+    return;
+  }
+
+  var partial = val.slice(atIdx+1).toLowerCase();
+  if(partial.includes(" ")){
+    suggest.style.display = "none";
+    return;
+  }
+
+  // Load users for suggestions
+  ref.child("users").once("value").then(function(snap){
+    var users = snap.val()||{};
+    var matches = [];
+    for(var k in users){
+      var u = users[k];
+      if(u.status==="approved" && u.name !== uname()){
+        if(!partial || u.name.toLowerCase().startsWith(partial)){
+          matches.push(u.name);
+        }
+      }
+    }
+
+    if(!matches.length){
+      suggest.style.display = "none";
+      return;
+    }
+
+    suggest.style.display = "block";
+    suggest.innerHTML = matches.slice(0,5).map(function(name){
+      return '<div onclick="insertMention(\''+name+'\')" '+
+        'style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--line)" '+
+        'onmouseover="this.style.background=\'var(--bg)\'" '+
+        'onmouseout="this.style.background=\'\'">'+
+        '👤 '+name+'</div>';
+    }).join("");
+  });
+}
+
+function insertMention(name){
+  var input = document.getElementById("cmsg");
+  var val = input.value;
+  var atIdx = val.lastIndexOf("@");
+  input.value = val.slice(0, atIdx) + "@"+name+" ";
+  input.focus();
+  var suggest = document.getElementById("mention-suggest");
+  if(suggest) suggest.style.display = "none";
+}
+
+function sendMsg(){
+  var el = document.getElementById("cmsg");
+  var tx = (el.value||"").trim();
+  if(!tx || !fbReady) return;
+
+  // Parse @mentions from the message
+  var mentions = [];
+  var mentionRe = /@([\w ]+?)(?=\s|$|@)/g;
+  var m;
+  while((m = mentionRe.exec(tx)) !== null){
+    mentions.push(m[1].trim());
+  }
+
+  // Save message
+  var msgData = { name:uname(), text:tx, time:Date.now() };
+  if(mentions.length) msgData.mentions = mentions;
+
+  ref.child("messages").push(msgData).then(function(){
+    el.value = "";
+    var suggest = document.getElementById("mention-suggest");
+    if(suggest) suggest.style.display = "none";
+
+    // Send notifications to mentioned users
+    if(mentions.length && fbReady){
+      ref.child("users").once("value").then(function(snap){
+        var users = snap.val()||{};
+        for(var k in users){
+          var u = users[k];
+          if(u.status !== "approved") continue;
+          // Check if this user was mentioned
+          var wasMentioned = mentions.some(function(mn){
+            return u.name.toLowerCase() === mn.toLowerCase();
+          });
+          if(wasMentioned && u.name !== uname()){
+            var notifId = "notif_"+Math.random().toString(36).substr(2,9);
+            ref.child("users/"+k+"/notifications/"+notifId).set({
+              type:      "mention",
+              message:   uname()+" mentioned you in chat: \""+tx.slice(0,80)+(tx.length>80?"...":"")+"\"",
+              timestamp: new Date().toISOString(),
+              read:      false
+            });
+          }
+        }
+      });
+    }
+  });
+}
+
+/* ===== TEAM ===== */
+function showTeam(){
+  setNav(isAdmin()?adminTabs():memberTabs());
+  render('<h2>Team Members</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+  
+  ref.child("users").once("value").then(function(snap){
+    var users=snap.val()||{};
+    var h='<h2>Team Members</h2>';
+    var found=false;
+    for(var k in users){
+      var u=users[k];
+      if(u.status==="approved"){
+        found=true;
+        var icon=u.role==="admin"?"👑":u.role==="co-admin"?"*":"";
+        h+='<div class="card"><b>'+icon+' '+u.name+'</b><br>'+
+          '<small style="color:#999">'+(u.inst&&u.inst.length?u.inst.join(", "):"-")+'</small></div>';
+      }
+    }
+    if(!found) h='<h2>Team Members</h2><div class="card" style="text-align:center;color:#999">No members yet</div>';
+    render(h);
+  });
+}
+
+/* ===== PROFILE ===== */
+function showProfile(){
+  setNav(isAdmin()?adminTabs():memberTabs());
+  render('<div class="card">Loading profile...</div>');
+  if(!fbReady) return;
+
+  var me = uid();
+
+  Promise.all([
+    ref.child("users/"+me).once("value"),
+    ref.child("settings/instruments").once("value")
+  ]).then(function(res){
+    var u    = res[0].val()||{};
+    var inst = res[1].val()&&Array.isArray(res[1].val()) ? res[1].val() : INST;
+    var sel  = u.inst||[];
+
+    var roleIcon = u.role==="admin"?"👑":u.role==="co-admin"?"*":"";
+
+    var h='<h2>'+roleIcon+' My Profile</h2>';
+
+    h+='<div class="card">'+
+      '<h3 style="margin-top:0">📋 Account Details</h3>'+
+      '<label>Full Name</label>'+
+      '<input id="p-name" value="'+( u.name||"")+'" placeholder="Full Name">'+
+      '<label>Email Address</label>'+
+      '<input id="p-email" type="email" value="'+(u.email||"")+'" placeholder="Email">'+
+      '<label>Phone Number</label>'+
+      '<input id="p-phone" type="tel" value="'+(u.phone||"")+'" placeholder="Phone">'+
+      '<label>Current Password <span style="font-weight:normal;color:#999">(required to save changes)</span></label>'+
+      '<input id="p-curpw" type="password" placeholder="Enter current password">'+
+      '<label>New Password <span style="font-weight:normal;color:#999">(leave blank to keep current)</span></label>'+
+      '<input id="p-newpw" type="password" placeholder="New password (4+ chars)">'+
+      '<label>Confirm New Password</label>'+
+      '<input id="p-confpw" type="password" placeholder="Repeat new password">'+
+      '<button onclick="saveProfile()" style="margin-top:14px">💾 Save Changes</button>'+
+      '<div id="profile-msg" style="margin-top:8px"></div>'+
+      '</div>';
+
+    h+='<div class="card">'+
+      '<h3 style="margin-top:0">🎸 My Instruments & Roles</h3>'+
+      '<p style="color:#999;font-size:13px;margin-top:0">Tap to select/deselect. Click Save below when done.</p>'+
+      '<div id="inst-chips">';
+
+    inst.forEach(function(n){
+      var on = sel.indexOf(n)>=0;
+      h+='<span class="chip'+(on?" on":"")+'" onclick="tglProfileInst(\''+ n +'\')">'+n+'</span>';
+    });
+
+    h+='</div>'+
+      '<button onclick="saveProfileInst()" style="margin-top:16px;background:#28a745">💾 Save Instruments</button>'+
+      '<div id="inst-profile-msg" style="margin-top:8px"></div>'+
+      '</div>';
+
+    if(u.role!=="admin"){
+      h+='<div class="card" style="border:1px solid #ef9a9a">'+
+        '<h3 style="margin-top:0;color:#c62828">⚠️ Danger Zone</h3>'+
+        '<p style="color:#999;font-size:13px;margin-top:0">Deleting your account is permanent.</p>'+
+        '<button onclick="deleteOwnAccount()" style="background:#c23b22">🗑 Delete My Account</button>'+
+        '</div>';
+    }
+
+    render(h);
+    window._profileInst = sel.slice();
+  });
+}
+
+function tglProfileInst(n){
+  var sel = window._profileInst||[];
+  var i   = sel.indexOf(n);
+  if(i>=0) sel.splice(i,1); else sel.push(n);
+  window._profileInst = sel;
+  document.querySelectorAll("#inst-chips .chip").forEach(function(el){
+    var nm = el.textContent;
+    el.className = "chip"+(sel.indexOf(nm)>=0?" on":"");
+  });
+}
+
+function saveProfileInst(){
+  var sel = window._profileInst||[];
+  if(!sel.length){ alert("Select at least one instrument"); return; }
+  var msg = document.getElementById("inst-profile-msg");
+  msg.innerHTML='<div class="msg-info">... Saving...</div>';
+  ref.child("users/"+uid()+"/inst").set(sel).then(function(){
+    sessionStorage.setItem("inst", sel.join("|"));
+    msg.innerHTML='<div class="msg-ok">✅ Instruments saved!</div>';
+  }).catch(function(e){
+    msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
+  });
+}
+
+function saveProfile(){
+  var name   = (document.getElementById("p-name").value||"").trim();
+  var email  = (document.getElementById("p-email").value||"").trim();
+  var phone  = (document.getElementById("p-phone").value||"").trim();
+  var curpw  = (document.getElementById("p-curpw").value||"");
+  var newpw  = (document.getElementById("p-newpw").value||"");
+  var confpw = (document.getElementById("p-confpw").value||"");
+  var msg    = document.getElementById("profile-msg");
+
+  if(!name||!email||!phone){
+    msg.innerHTML='<div class="msg-err">x Name, email and phone are required</div>'; return;
+  }
+  if(!curpw){
+    msg.innerHTML='<div class="msg-err">x Enter your current password to save changes</div>'; return;
+  }
+  if(newpw&&newpw.length<4){
+    msg.innerHTML='<div class="msg-err">x New password must be 4+ characters</div>'; return;
+  }
+  if(newpw&&newpw!==confpw){
+    msg.innerHTML='<div class="msg-err">x New passwords do not match</div>'; return;
+  }
+
+  msg.innerHTML='<div class="msg-info">... Verifying...</div>';
+
+  ref.child("users/"+uid()+"/pass").once("value").then(function(snap){
+    if(snap.val()!==curpw){
+      msg.innerHTML='<div class="msg-err">x Current password is incorrect</div>'; return;
+    }
+    var updates = { name:name, email:email, phone:phone };
+    if(newpw) updates.pass = newpw;
+    ref.child("users/"+uid()).update(updates).then(function(){
+      logActivity("profile_updated","Updated profile");
+      sessionStorage.setItem("name", name);
+      setHeader();
+      msg.innerHTML='<div class="msg-ok">✅ Profile updated successfully!</div>';
+    }).catch(function(e){
+      msg.innerHTML='<div class="msg-err">x '+e.message+'</div>';
+    });
+  });
+}
+
+function deleteOwnAccount(){
+  if(!confirm("Delete your account permanently?\n\nThis cannot be undone.")) return;
+  var curpw = prompt("Enter your password to confirm:");
+  if(!curpw) return;
+  ref.child("users/"+uid()+"/pass").once("value").then(function(snap){
+    if(snap.val()!==curpw){ alert("x Password incorrect."); return; }
+    ref.child("users/"+uid()).remove().then(function(){
+      alert("Your account has been deleted.");
+      logout();
+    });
+  });
+}
+
+
+
+/* ===== ACTIVITY LOG (Admin) ===== */
+function showLog(){
+  setNav(adminTabs());
+  render('<h2>📋 Activity Log</h2><div class="card">Loading...</div>');
+  if(!fbReady) return;
+
+  ref.child("activityLog").orderByChild("ts").limitToLast(200).once("value").then(function(snap){
+    var entries=[];
+    if(snap.val()){
+      for(var k in snap.val()) entries.push({id:k,...snap.val()[k]});
+    }
+    // Sort newest first
+    entries.sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+
+    var ACTION_ICONS={
+      login:"🔑", logout:"🚪",
+      user_approved:"✅", user_rejected:"❌",
+      promoted_coadmin:"*", demoted_coadmin:"⬇",
+      service_created:"📅", service_deleted:"🗑",
+      member_assigned:"👥", member_removed:"✂️",
+      rsvp_response:"📬",
+      song_added:"🎵", song_deleted:"🗑",
+      profile_updated:""
+    };
+
+    var ACTION_LABELS={
+      login:"Sign In", logout:"Sign Out",
+      user_approved:"User Approved", user_rejected:"User Rejected",
+      promoted_coadmin:"Made Co-Admin", demoted_coadmin:"Removed Co-Admin",
+      service_created:"Service Created", service_deleted:"Service Deleted",
+      member_assigned:"Member Assigned", member_removed:"Member Removed",
+      rsvp_response:"RSVP Response",
+      song_added:"Song Added", song_deleted:"Song Deleted",
+      profile_updated:"Profile Updated"
+    };
+
+    // Filter controls
+    var h='<h2>📋 Activity Log</h2>';
+    h+='<div class="card" style="padding:10px">';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center">';
+    h+='<input id="log-search" placeholder="Search user or action..." oninput="filterLog()" style="margin:0">';
+    h+='<select id="log-filter" onchange="filterLog()" style="margin:0">'+
+      '<option value="">All Actions</option>'+
+      Object.keys(ACTION_LABELS).map(function(k){return'<option value="'+k+'">'+ACTION_LABELS[k]+'</option>';}).join("")+
+    '</select>';
+    h+='<button onclick="clearLog()" style="width:auto;padding:8px 12px;margin:0;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;font-size:12px">🗑 Clear</button>';
+    h+='</div>';
+    h+='<div style="font-size:12px;color:#999;margin-top:8px">'+entries.length+' entries (newest first)</div>';
+    h+='</div>';
+
+    if(!entries.length){
+      h+='<div class="card" style="text-align:center;color:#999;padding:30px">No activity yet. Actions will appear here as users interact with the app.</div>';
+      render(h);
+      return;
+    }
+
+    h+='<div id="log-entries">';
+
+    // Group by date
+    var lastDate="";
+    entries.forEach(function(e){
+      var dt  = new Date(e.timestamp||Date.now());
+      var dateStr = dt.toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+      var timeStr = dt.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
+      var icon  = ACTION_ICONS[e.action]  || "•";
+      var label = ACTION_LABELS[e.action] || e.action;
+      var roleColor = e.role==="admin"?"#7b5e3b":e.role==="co-admin"?"#9c7c3a":"#666";
+      var envBadge = e.env==="production"
+        ? '<span style="font-size:9px;background:#28a745;color:#fff;padding:1px 5px;border-radius:8px;margin-left:4px">PROD</span>'
+        : '<span style="font-size:9px;background:#ff9800;color:#fff;padding:1px 5px;border-radius:8px;margin-left:4px">SBX</span>';
+
+      if(dateStr!==lastDate){
+        h+='<div style="margin:16px 0 6px;font-size:12px;font-weight:bold;color:#999;text-transform:uppercase;letter-spacing:0.5px">'+dateStr+'</div>';
+        lastDate=dateStr;
+      }
+
+      h+='<div class="log-entry" data-action="'+e.action+'" data-user="'+(e.user||"").toLowerCase()+'" '+
+        'style="display:flex;align-items:start;gap:10px;padding:8px 10px;background:var(--bg);border-radius:6px;margin:3px 0;font-size:13px">'+
+        '<span style="font-size:18px;flex-shrink:0;margin-top:1px">'+icon+'</span>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">'+
+            '<b>'+label+'</b>'+
+            '<span style="font-size:11px;color:#999;white-space:nowrap">'+timeStr+'</span>'+
+          '</div>'+
+          (e.detail?'<div style="color:#666;margin-top:2px;font-size:12px">'+escHtml(e.detail)+'</div>':'')+
+          '<div style="margin-top:4px">'+
+            '<span style="font-size:11px;color:'+roleColor+'">'+e.user+'</span>'+
+            envBadge+
+          '</div>'+
+        '</div>'+
+      '</div>';
+    });
+
+    h+='</div>';
+    render(h);
+  });
+}
+
+function filterLog(){
+  var search  = (document.getElementById("log-search").value||"").toLowerCase();
+  var filter  = document.getElementById("log-filter").value;
+  var entries = document.querySelectorAll(".log-entry");
+  entries.forEach(function(el){
+    var action = el.getAttribute("data-action")||"";
+    var user   = el.getAttribute("data-user")||"";
+    var text   = el.textContent.toLowerCase();
+    var show   = (!filter || filter===action) && (!search || text.indexOf(search)>=0);
+    el.style.display = show ? "" : "none";
+  });
+}
+
+function clearLog(){
+  if(!confirm("Clear all activity log entries?\n\nThis cannot be undone.")) return;
+  ref.child("activityLog").remove().then(function(){
+    showLog();
+  });
+}
+
+function escHtml(s){
+  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+
+start();
+</script>
+</body>
+</html>
