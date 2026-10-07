@@ -6,6 +6,10 @@ on:
       - main   # → deploys to Production (gh-pages)
       - dev    # → deploys to Sandbox   (gh-pages-dev)
 
+# Required so the workflow can push to gh-pages branch
+permissions:
+  contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -13,15 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set environment
+      - name: Set target branch
         id: env
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "target_branch=gh-pages"        >> $GITHUB_OUTPUT
-            echo "env_name=production"           >> $GITHUB_OUTPUT
+            echo "target_branch=gh-pages" >> $GITHUB_OUTPUT
           else
-            echo "target_branch=gh-pages-dev"   >> $GITHUB_OUTPUT
-            echo "env_name=sandbox"             >> $GITHUB_OUTPUT
+            echo "target_branch=gh-pages-dev" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy to GitHub Pages
@@ -30,5 +32,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir:  ./
           publish_branch: ${{ steps.env.outputs.target_branch }}
-          # Only deploy index.html and assets — not .github folder
           exclude_assets: '.github'
