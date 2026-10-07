@@ -62,25 +62,49 @@ var KEYS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 var EJS = { ready: false };
 function initEmailJS(pubKey){ if(pubKey){ emailjs.init(pubKey); EJS.ready=true; } }
 
-// -- Firebase config (Production) --
-// Sandbox/prod split is set up later - currently always uses production
-var IS_PROD = true;
-var ENV = "production";
-
-var FB = {
-  apiKey:"AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
-  authDomain:"elc-worship-schedule.firebaseapp.com",
-  databaseURL:"https://elc-worship-schedule-default-rtdb.firebaseio.com",
-  projectId:"elc-worship-schedule",
-  storageBucket:"elc-worship-schedule.firebasestorage.app",
-  messagingSenderId:"868888139963",
-  appId:"1:868888139963:web:2d933464a111b2b17c319e"
+// ── Firebase configs ──────────────────────────────────────────────────────────
+var FB_PROD = {
+  apiKey:            "AIzaSyC4HnnRcChcof_s4XKE173GFrGwmR1vxSg",
+  authDomain:        "elc-worship-schedule.firebaseapp.com",
+  databaseURL:       "https://elc-worship-schedule-default-rtdb.firebaseio.com",
+  projectId:         "elc-worship-schedule",
+  storageBucket:     "elc-worship-schedule.firebasestorage.app",
+  messagingSenderId: "868888139963",
+  appId:             "1:868888139963:web:2d933464a111b2b17c319e"
 };
 
-// Environment badge
+// PASTE YOUR SANDBOX CONFIG HERE after creating elc-worship-dev in Firebase Console
+var FB_SANDBOX = {
+  apiKey:            "AIzaSy...",
+  authDomain:        "elc-worship-dev.firebaseapp.com",
+  databaseURL:       "https://elc-worship-dev-default-rtdb.firebaseio.com",
+  projectId:         "elc-worship-dev",
+  storageBucket:     "elc-worship-dev.firebasestorage.app",
+  messagingSenderId: "123456789",
+  appId:             "1:123456789:web:abc123"
+};
+
+// ── Auto-detect environment from hostname ─────────────────────────────────────
+// Production:  yourname.github.io/worship-scheduler  (or custom domain)
+// Sandbox:     yourname.github.io/worship-scheduler-dev  (or localhost)
 (function(){
+  var host = window.location.hostname;
+  var path = window.location.pathname;
+  var isSandbox = (host === "localhost" || host === "127.0.0.1")
+               || path.indexOf("-dev") !== -1
+               || path.indexOf("/dev/") !== -1;
+
+  window.IS_PROD = !isSandbox;
+  window.ENV     = isSandbox ? "sandbox" : "production";
+  window.FB      = isSandbox ? FB_SANDBOX : FB_PROD;
+
+  // Show environment badge
   var badge = document.getElementById("env-badge");
-  if(badge) badge.innerHTML='<span style="background:#28a745;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold">🟢 PRODUCTION</span>';
+  if(badge){
+    badge.innerHTML = isSandbox
+      ? '<span style="background:#f57c00;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:bold;letter-spacing:0.5px">🟡 SANDBOX</span>'
+      : '<span style="background:#28a745;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:bold;letter-spacing:0.5px">🟢 PRODUCTION</span>';
+  }
 })();
 
 // Initialize Firebase immediately (scripts loaded synchronously above)
@@ -1397,29 +1421,55 @@ function removeSvcSong(sid,songId){
 
 // ── Open a PDF stored in Firebase ──
 function viewPdf(sid, pdfId){
+  // Show loading indicator on the button that was clicked
+  var btn = event && event.target;
+  var origText = btn ? btn.textContent : "";
+  if(btn) btn.textContent = "⏳ Loading...";
+
   ref.child("svcPdfData/"+sid+"/"+pdfId).once("value").then(function(snap){
+    if(btn) btn.textContent = origText;
+
     var dataUrl = snap.val();
     if(!dataUrl){
       alert("PDF not found. It may have been removed.");
       return;
     }
-    // Open in new tab
-    var w = window.open();
-    if(w){
-      w.document.write(
-        '<html><head><title>Service PDF</title></head><body style="margin:0">'+
-        '<embed src="'+dataUrl+'" type="application/pdf" width="100%" height="100%" '+
-        'style="position:fixed;top:0;left:0;width:100%;height:100%">'+
-        '</body></html>'
-      );
-    } else {
-      // Fallback: create a link and click it
-      var a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = "service-pdf.pdf";
-      a.click();
+
+    try{
+      // Convert base64 data URL → Blob → Blob URL (no popup blocker issues)
+      var base64 = dataUrl.split(",")[1];
+      if(!base64){ alert("Invalid PDF data."); return; }
+
+      var binary  = atob(base64);
+      var bytes   = new Uint8Array(binary.length);
+      for(var i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      var blob    = new Blob([bytes], {type:"application/pdf"});
+      var blobUrl = URL.createObjectURL(blob);
+
+      // Try opening in new tab
+      var opened = window.open(blobUrl, "_blank");
+
+      if(!opened){
+        // Popup blocked — trigger download instead
+        var a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = (pdfId === "combined" ? "Combined-Service.pdf" : "Service.pdf");
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Small delay then revoke blob
+        setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 5000);
+      } else {
+        // Revoke after tab has loaded
+        setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 10000);
+      }
+    }catch(e){
+      if(btn) btn.textContent = origText;
+      alert("Error opening PDF: "+e.message);
     }
   }).catch(function(e){
+    if(btn) btn.textContent = origText;
     alert("Error loading PDF: "+e.message);
   });
 }
