@@ -1,30 +1,33 @@
-name: Worship Service Reminders
+name: Send Reminders
 
 on:
   schedule:
-    - cron: '0 * * * *'   # Every hour — script decides whether to send based on admin schedule
-  workflow_dispatch:        # Manual trigger for testing
+    - cron: '0 * * * *'   # runs every hour
+  workflow_dispatch:        # allow manual trigger
 
 jobs:
-  send-reminders:
+  remind:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Install dependencies
-        run: npm install node-fetch@2
+        run: npm install
+        working-directory: .
 
       - name: Send reminder emails
+        run: node .github/scripts/send-reminders.js
         env:
-          FIREBASE_URL:        ${{ secrets.FIREBASE_URL }}
-          FIREBASE_SECRET:     ${{ secrets.FIREBASE_SECRET }}
+          # Use production or sandbox Firebase based on which branch triggered this
+          FIREBASE_URL: >-
+            ${{ github.ref == 'refs/heads/main'
+              && secrets.FIREBASE_URL
+              || secrets.FIREBASE_URL_SANDBOX }}
+          FIREBASE_SECRET: >-
+            ${{ github.ref == 'refs/heads/main'
+              && secrets.FIREBASE_SECRET
+              || secrets.FIREBASE_SECRET_SANDBOX }}
           EMAILJS_SERVICE_ID:  ${{ secrets.EMAILJS_SERVICE_ID }}
           EMAILJS_PUBLIC_KEY:  ${{ secrets.EMAILJS_PUBLIC_KEY }}
           EMAILJS_PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
-        run: node .github/scripts/send-reminders.js
